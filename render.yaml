@@ -1,0 +1,101 @@
+# Render Blueprint for the Gbanjo API: the API, its Postgres database and Redis (Key Value).
+# In Render: New → Blueprint → pick this repo. You'll be asked for every value marked `sync: false`.
+# Plans are "free" to start; switch to paid ones in the dashboard when you go live
+# (free web services sleep after 15 min idle, and the free database expires after 30 days).
+
+services:
+  - type: web
+    name: gbanjo-api
+    runtime: node
+    region: frankfurt # closest Render region to Nigeria
+    plan: free
+    # --include=dev: the build needs the Nest CLI, Prisma CLI and TypeScript (postinstall runs `prisma generate`).
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies new database migrations, then starts the API.
+    startCommand: npm run start:render
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: SWAGGER_ENABLED
+        value: "true"
+      # Your website's address(es), comma-separated, e.g. https://gbanjo-web.onrender.com,https://gbanjo.com
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gbanjo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: gbanjo-redis
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+
+      # Google / Apple sign-in
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: APPLE_CLIENT_IDS
+        sync: false
+
+      # Email (SMTP)
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
+
+      # SMS (OTP codes)
+      - key: SMS_PROVIDER
+        value: termii
+      - key: SMS_FALLBACK_ENABLED
+        value: "true"
+      - key: TERMII_API_KEY
+        sync: false
+      - key: TERMII_SENDER_ID
+        sync: false
+      - key: TERMII_BASE_URL
+        value: https://api.ng.termii.com
+      - key: EMISRI_API_KEY
+        sync: false
+      - key: EMISRI_SENDER_ID
+        sync: false
+      - key: EMISRI_BASE_URL
+        value: https://api.emisri.com/v1
+
+      # Image uploads
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: gbanjo
+
+  - type: keyvalue
+    name: gbanjo-redis
+    region: frankfurt
+    plan: free
+    ipAllowList: [] # only Render services can connect
+    maxmemoryPolicy: noeviction # required by the job queue (BullMQ): never drop queued jobs
+
+databases:
+  - name: gbanjo-db
+    databaseName: gbanjo
+    user: gbanjo
+    region: frankfurt
+    plan: free

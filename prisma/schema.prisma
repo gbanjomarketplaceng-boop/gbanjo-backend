@@ -1,0 +1,377 @@
+// Prisma schema. Models are PascalCase in code and snake_case in the database.
+// After changing it run `npm run prisma:migrate -- --name <change>`.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  SOLD
+}
+
+enum SellerVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ContactStatus {
+  NEW
+  RESOLVED
+}
+
+enum OAuthProvider {
+  GOOGLE
+  APPLE
+}
+
+model User {
+  id              String     @id @default(cuid())
+  firstName       String     @map("first_name")
+  lastName        String     @map("last_name")
+  /// Always stored lower-case.
+  email           String     @unique
+  /// E.164 format, e.g. +2349012345678. Null for Google/Apple accounts until they complete their profile.
+  phone           String?    @unique
+  /// Argon2id hash. Null until the user sets a password (mobile sign-up sets it after OTP).
+  passwordHash    String?    @map("password_hash")
+  avatarUrl       String?    @map("avatar_url")
+  role            Role       @default(USER)
+  status          UserStatus @default(ACTIVE)
+  phoneVerifiedAt DateTime?  @map("phone_verified_at")
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  sessions      Session[]
+  oauthAccounts OAuthAccount[]
+  wallet        Wallet?
+  products      Product[]
+  wishlistItems WishlistItem[]
+  cartItems     CartItem[]
+  sellerVerification SellerVerification?
+  addresses     Address[]
+  buyerConversations  Conversation[] @relation("ConversationBuyer")
+  sellerConversations Conversation[] @relation("ConversationSeller")
+  chatMessages        ChatMessage[]
+  reviews             Review[]
+
+  @@map("users")
+}
+
+/// One row per signed-in device. The refresh token is `<session id>.<secret>`; only a SHA-256
+/// of the secret is stored, and it rotates on every refresh.
+model Session {
+  id                String    @id @default(cuid())
+  userId            String    @map("user_id")
+  tokenHash         String    @map("token_hash")
+  /// Hash of the token that was rotated out, kept to detect refresh-token reuse.
+  previousTokenHash String?   @map("previous_token_hash")
+  rotatedAt         DateTime? @map("rotated_at")
+  userAgent         String?   @map("user_agent")
+  ipAddress         String?   @map("ip_address")
+  expiresAt         DateTime  @map("expires_at")
+  lastUsedAt        DateTime  @default(now()) @map("last_used_at")
+  revokedAt         DateTime? @map("revoked_at")
+  revokedReason     String?   @map("revoked_reason")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// A Google / Apple identity linked to a user. `providerUserId` is the provider's stable `sub` claim.
+model OAuthAccount {
+  id             String        @id @default(cuid())
+  userId         String        @map("user_id")
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  /// Email the provider reported when the account was linked (may be an Apple private relay address).
+  email          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  lastUsedAt     DateTime      @default(now()) @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+/// Every account gets one wallet (balance 0.00) when it's created.
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  balance   Decimal  @default(0) @db.Decimal(14, 2)
+  currency  String   @default("NGN")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  /// URL name, e.g. "home-decor".
+  slug      String   @unique
+  name      String
+  /// Short line under the name, e.g. "Furniture & everyday living".
+  blurb     String   @default("")
+  imageUrl  String   @map("image_url")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  /// URL name, e.g. "olive-low-top-sneakers".
+  slug        String        @unique
+  name        String
+  description String?
+  price       Decimal       @db.Decimal(14, 2)
+  /// Price before the discount; set together with flashSaleEndsAt for a flash sale.
+  oldPrice    Decimal?      @map("old_price") @db.Decimal(14, 2)
+  categoryId  String        @map("category_id")
+  /// Small line on the card, e.g. "Clothing · Footwear".
+  tags        String        @default("")
+  location    String
+  imageUrl    String        @map("image_url")
+  /// Extra photos for the detail page.
+  gallery     String[]
+  /// Options such as colours and sizes.
+  variations  String[]
+  /// e.g. "Size S · Like new".
+  condition   String?
+  rating      Decimal       @default(0) @db.Decimal(2, 1)
+  reviewCount Int           @default(0) @map("review_count")
+  status      ProductStatus @default(ACTIVE)
+  sellerId    String?       @map("seller_id")
+  /// Seller listings: brand, price negotiable, delivery option ("buyer-pays" | "i-deliver" | "pickup").
+  brand       String?
+  negotiable  Boolean       @default(false)
+  delivery    String?
+  /// In the flash sale until this time.
+  flashSaleEndsAt DateTime? @map("flash_sale_ends_at")
+  /// Editorial boost for "Just For You" (higher shows first).
+  featuredScore   Int       @default(0) @map("featured_score")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  seller        User?          @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  wishlistItems WishlistItem[]
+  cartItems     CartItem[]
+  conversations Conversation[]
+  reviews       Review[]
+
+  @@index([categoryId, status])
+  @@index([sellerId, status])
+  @@index([status, createdAt])
+  @@index([flashSaleEndsAt])
+  @@map("products")
+}
+
+/// Home-page hero slides. Managed by admins (web: /admin/banners).
+model Banner {
+  id              String    @id @default(cuid())
+  /// Small pill above the title, e.g. "Happening Now".
+  eyebrow         String?
+  title           String
+  /// Big line under the title, e.g. "Up to 50%".
+  highlight       String?
+  subtitle        String?
+  ctaLabel        String?   @map("cta_label")
+  /// Where the button goes, e.g. "/products?category=clothing".
+  ctaHref         String?   @map("cta_href")
+  imageUrl        String    @map("image_url")
+  /// Shown behind/around the image while it loads, e.g. "#f8b91b".
+  backgroundColor String    @default("#f8b91b") @map("background_color")
+  sortOrder       Int       @default(0) @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  /// Optional schedule: only shown between these times.
+  startsAt        DateTime? @map("starts_at")
+  endsAt          DateTime? @map("ends_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("banners")
+}
+
+/// Messages from the Contact page. Each one is also emailed to SUPPORT_EMAIL.
+model ContactMessage {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  topic     String
+  orderRef  String?       @map("order_ref")
+  subject   String
+  message   String
+  status    ContactStatus @default(NEW)
+  ipAddress String?       @map("ip_address")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("contact_messages")
+}
+
+/// A product a signed-in user saved for later.
+model WishlistItem {
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId])
+  @@map("wishlist_items")
+}
+
+/// One line in a signed-in user's cart (one line per product).
+model CartItem {
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  quantity  Int      @default(1)
+  /// Chosen option, e.g. "Pink, Size M".
+  option    String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+/// A seller's identity check (one per user; resubmitting replaces it). Sellers can list while PENDING.
+model SellerVerification {
+  id               String                   @id @default(cuid())
+  userId           String                   @unique @map("user_id")
+  /// nin | cac | drivers-license | voters-card | passport
+  idType           String                   @map("id_type")
+  /// Private Cloudinary asset (id-documents folder). Null only when uploads aren't configured.
+  documentPublicId String?                  @map("document_public_id")
+  status           SellerVerificationStatus @default(PENDING)
+  /// Why it was rejected (shown to the seller).
+  note             String?
+  reviewedAt       DateTime?                @map("reviewed_at")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("seller_verifications")
+}
+
+/// A saved delivery address. Exactly one per user is the default (used in the header, cart and checkout).
+model Address {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  /// e.g. "Home", "Work"
+  label     String
+  /// Who receives the delivery
+  name      String
+  /// +234XXXXXXXXXX
+  phone     String
+  address   String
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+/// A chat between a buyer and the seller about one listing (one conversation per buyer per listing).
+model Conversation {
+  id        String  @id @default(cuid())
+  productId String? @map("product_id")
+  buyerId   String  @map("buyer_id")
+  sellerId  String  @map("seller_id")
+  /// Time of the latest message (for sorting the inbox).
+  lastMessageAt    DateTime  @default(now()) @map("last_message_at")
+  /// Everything up to these times has been read by that side.
+  buyerLastReadAt  DateTime? @map("buyer_last_read_at")
+  sellerLastReadAt DateTime? @map("seller_last_read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  product  Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  buyer    User          @relation("ConversationBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   User          @relation("ConversationSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@unique([productId, buyerId])
+  @@index([buyerId, lastMessageAt])
+  @@index([sellerId, lastMessageAt])
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  text           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
+}
+
+/// A shopper's star rating (1–5) and comment on a product. One per user per product; editing replaces it.
+/// Product.rating / reviewCount are recalculated from these whenever one changes.
+model Review {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  userId    String   @map("user_id")
+  rating    Int
+  text      String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, userId])
+  @@index([productId, createdAt])
+  @@map("reviews")
+}
