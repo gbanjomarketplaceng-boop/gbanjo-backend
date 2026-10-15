@@ -81,6 +81,24 @@ const envSchema = z
     EMISRI_BASE_URL: z.string().url().default("https://api.emisri.com/v1"),
     EMISRI_EXCLUDE_DND: bool.default(false),
 
+    // Payments (Flutterwave). Without FLW_SECRET_KEY, card payments use a built-in test checkout outside
+    // production and are switched off in production (wallet payments still work).
+    FLW_SECRET_KEY: optionalString,
+    /** The "Secret hash" set under Settings → Webhooks on the Flutterwave dashboard; Flutterwave sends it back with every webhook. */
+    FLW_SECRET_HASH: optionalString,
+    FLW_BASE_URL: z.string().url().default("https://api.flutterwave.com/v3"),
+    /** Public address of this API (Flutterwave sends shoppers back here after paying), e.g. https://gbanjo-backend.onrender.com. Defaults to Render's RENDER_EXTERNAL_URL. */
+    API_PUBLIC_URL: optionalString,
+    RENDER_EXTERNAL_URL: optionalString,
+    /** Extra comma-separated web origins allowed as "return to" pages after paying (CORS_ORIGINS are always allowed). */
+    PAYMENT_RETURN_ORIGINS: z.string().default(""),
+    /** Express delivery price in naira (standard is free). */
+    SHIPPING_EXPRESS_FEE: z.coerce.number().min(0).default(12000),
+    /** Days a seller's earnings are held after delivery before they reach the wallet balance. */
+    ORDER_PAYOUT_HOLD_DAYS: z.coerce.number().min(0).default(3),
+    /** Gbanjo's commission on each sale, in percent (0 = none). */
+    PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(50).default(0),
+
     /** Inbox that receives Contact-page messages. */
     SUPPORT_EMAIL: z.string().email().default("support@gbanjo.com"),
 

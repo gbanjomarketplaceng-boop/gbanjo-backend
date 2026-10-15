@@ -4,7 +4,7 @@ import { Job } from "bullmq";
 import { EmailChannel, SmsChannel } from "./channels/channel.interfaces";
 import { ConfigService } from "@nestjs/config";
 import type { Env } from "../../config/env.validation";
-import { ContactMessageJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
+import { ContactMessageJob, MessageJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
 
 const PURPOSE_TEXT: Record<SendOtpJob["purpose"], string> = {
   signup: "verify your phone number",
@@ -35,6 +35,8 @@ export class NotificationsProcessor extends WorkerHost {
         return this.passwordChanged(job.data as PasswordChangedJob);
       case NotificationJob.ContactMessage:
         return this.contactMessage(job.data as ContactMessageJob);
+      case NotificationJob.Message:
+        return this.message(job.data as MessageJob);
       default:
         this.logger.warn(`Unknown job "${job.name}"`);
     }
@@ -65,6 +67,11 @@ export class NotificationsProcessor extends WorkerHost {
       "We got your message — Gbanjo support",
       `Hi ${m.name},\n\nThanks for contacting Gbanjo. We've received your message "${m.subject}" and will reply to this email address soon.\n\nYour message:\n${m.message}\n\n— The Gbanjo team`,
     );
+  }
+
+  private async message({ email, phone, subject, text, sms }: MessageJob) {
+    if (email) await this.email.send(email, subject, text);
+    if (phone && sms) await this.sms.send(phone, sms);
   }
 
   private async passwordChanged({ email, firstName }: PasswordChangedJob) {

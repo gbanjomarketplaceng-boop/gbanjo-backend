@@ -44,6 +44,39 @@ enum OAuthProvider {
   APPLE
 }
 
+enum OrderStatus {
+  /// Created at checkout; waiting for the card payment to go through. Hidden from order lists.
+  AWAITING_PAYMENT
+  ONGOING
+  COMPLETED
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  CANCELED
+}
+
+enum PaymentPurpose {
+  ORDER
+  TOP_UP
+}
+
+enum WalletTxType {
+  TOP_UP
+  ORDER_PAYMENT
+  REFUND
+  SALE
+}
+
+enum WalletTxStatus {
+  /// Seller earnings on hold until the payout date (see ORDER_PAYOUT_HOLD_DAYS).
+  PENDING
+  COMPLETED
+}
+
 model User {
   id              String     @id @default(cuid())
   firstName       String     @map("first_name")
@@ -75,6 +108,9 @@ model User {
   sellerConversations Conversation[] @relation("ConversationSeller")
   chatMessages        ChatMessage[]
   reviews             Review[]
+  payments            Payment[]
+  purchases           Order[]        @relation("OrderBuyer")
+  sales               Order[]        @relation("OrderSeller")
 
   @@map("users")
 }
@@ -129,9 +165,143 @@ model Wallet {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
 
   @@map("wallets")
+}
+
+/// Every change to a wallet. `amount` is signed (+ money in, − money out). `reference` makes each change happen once.
+model WalletTransaction {
+  id          String         @id @default(cuid())
+  walletId    String         @map("wallet_id")
+  type        WalletTxType
+  status      WalletTxStatus @default(COMPLETED)
+  amount      Decimal        @db.Decimal(14, 2)
+  /// Idempotency key, e.g. "topup:<payment ref>", "sale:<order id>".
+  reference   String         @unique
+  description String
+  orderId     String?        @map("order_id")
+  paymentId   String?        @map("payment_id")
+  /// PENDING sale earnings move into the balance at this time.
+  availableAt DateTime?      @map("available_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([status, availableAt])
+  @@map("wallet_transactions")
+}
+
+/// One payment attempt: a checkout (paying for one or more orders) or a wallet top-up.
+model Payment {
+  id            String         @id @default(cuid())
+  /// Our reference, sent to Flutterwave as tx_ref, e.g. "GBJ-M2X8K1-4F7A".
+  reference     String         @unique
+  userId        String         @map("user_id")
+  purpose       PaymentPurpose
+  /// card | bank-transfer | ussd (paid on Flutterwave) or wallet.
+  method        String
+  amount        Decimal        @db.Decimal(14, 2)
+  currency      String         @default("NGN")
+  status        PaymentStatus  @default(PENDING)
+  /// "flutterwave", "test" (local test checkout) or "wallet".
+  provider      String
+  /// Flutterwave's transaction id once it's paid.
+  providerTxId  String?        @map("provider_tx_id")
+  checkoutUrl   String?        @map("checkout_url")
+  /// Where to send the shopper after paying (website page or app link).
+  returnUrl     String?        @map("return_url")
+  failureReason String?        @map("failure_reason")
+  paidAt        DateTime?      @map("paid_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+/// One seller's part of a checkout. Shipment stages: 0 confirmed, 1 packed, 2 shipped, 3 out for delivery, 4 delivered.
+model Order {
+  /// 8-digit order number shown to people, e.g. "92287157".
+  id             String      @id
+  buyerId        String      @map("buyer_id")
+  /// Null for items sold by Gbanjo itself (an admin moves those along).
+  sellerId       String?     @map("seller_id")
+  paymentId      String      @map("payment_id")
+  status         OrderStatus @default(AWAITING_PAYMENT)
+  stage          Int         @default(0)
+  /// When each stage was reached (index = stage).
+  stageTimes     DateTime[]  @map("stage_times")
+  recipient      String
+  phone          String
+  address        String
+  email          String?
+  /// standard | express
+  shippingMethod String      @map("shipping_method")
+  shippingFee    Decimal     @default(0) @map("shipping_fee") @db.Decimal(14, 2)
+  subtotal       Decimal     @db.Decimal(14, 2)
+  discount       Decimal     @default(0) @db.Decimal(14, 2)
+  total          Decimal     @db.Decimal(14, 2)
+  voucherCode    String?     @map("voucher_code")
+  etaFrom        DateTime    @map("eta_from")
+  etaTo          DateTime    @map("eta_to")
+  paidAt         DateTime?   @map("paid_at")
+  deliveredAt    DateTime?   @map("delivered_at")
+  canceledAt     DateTime?   @map("canceled_at")
+  /// buyer | seller | admin | system
+  canceledBy     String?     @map("canceled_by")
+  /// card | wallet — where the refund went.
+  refundTo       String?     @map("refund_to")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  buyer   User        @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User?       @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  payment Payment     @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  items   OrderItem[]
+
+  @@index([buyerId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([paymentId])
+  @@map("orders")
+}
+
+/// What was bought, copied at checkout so later edits to the listing don't change the order.
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String  @map("order_id")
+  productId   String? @map("product_id")
+  /// The product's URL name at checkout (used for links).
+  productSlug String  @map("product_slug")
+  name        String
+  option      String  @default("")
+  imageUrl    String  @map("image_url")
+  price       Decimal @db.Decimal(14, 2)
+  qty         Int
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+/// Discount codes typed at checkout, e.g. GBANJO10 = 10% off the items.
+model Voucher {
+  code       String    @id
+  percentOff Int       @map("percent_off")
+  active     Boolean   @default(true)
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("vouchers")
 }
 
 model Category {
@@ -192,6 +362,7 @@ model Product {
   cartItems     CartItem[]
   conversations Conversation[]
   reviews       Review[]
+  orderItems    OrderItem[]
 
   @@index([categoryId, status])
   @@index([sellerId, status])

@@ -4,6 +4,7 @@ export const NotificationJob = {
   SendOtp: "send-otp",
   PasswordChanged: "password-changed",
   ContactMessage: "contact-message",
+  Message: "message",
 } as const;
 
 export type OtpPurpose = "signup" | "password_reset";
@@ -31,4 +32,15 @@ export interface ContactMessageJob {
   orderRef?: string | null;
   subject: string;
   message: string;
+}
+
+/** A plain email and/or text (order updates, receipts). Either address may be missing. */
+export interface MessageJob {
+  email?: string | null;
+  phone?: string | null;
+  subject: string;
+  /** Email body. */
+  text: string;
+  /** Text-message body (keep it short); no SMS is sent without it. */
+  sms?: string;
 }
