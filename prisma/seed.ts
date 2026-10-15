@@ -5,9 +5,10 @@
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { pgConnectionString } from "../src/prisma/database-url";
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: pgConnectionString(process.env.DATABASE_URL!) }) });
 
 const DAY = 86_400_000;
 const LAGOS = "Lagos, Nigeria";
