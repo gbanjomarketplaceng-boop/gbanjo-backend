@@ -23,6 +23,9 @@ import { UploadsModule } from "./modules/uploads/uploads.module";
 import { WalletModule } from "./modules/wallet/wallet.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { OrdersModule } from "./modules/orders/orders.module";
+import { InboxModule } from "./modules/inbox/inbox.module";
+import { SafetyModule } from "./modules/safety/safety.module";
+import { AdminModule } from "./modules/admin/admin.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
 import { REDIS } from "./redis/redis.constants";
@@ -57,8 +60,11 @@ import { RedisModule } from "./redis/redis.module";
     AddressesModule,
     ChatModule,
     ReviewsModule,
+    InboxModule,
     PaymentsModule,
     OrdersModule,
+    SafetyModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [

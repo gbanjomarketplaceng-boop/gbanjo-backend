@@ -3,6 +3,7 @@ import { HttpStatus, Injectable } from "@nestjs/common";
 import { AppException } from "../../common/exceptions/app.exception";
 import type { Prisma } from "../../generated/prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { InboxService } from "../inbox/inbox.service";
 import { UploadsService } from "../uploads/uploads.service";
 import { ListingDto, type ReviewVerificationDto, type SaveListingDto, type SubmitVerificationDto, VerificationDto } from "./dto/seller.dto";
 import { MAX_LISTINGS } from "./seller.constants";
@@ -34,6 +35,7 @@ export class SellerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
+    private readonly inbox: InboxService,
   ) {}
 
   // ---------- Verification ----------
@@ -78,6 +80,12 @@ export class SellerService {
       .update({ where: { id }, data: { status: dto.status, note: dto.status === "REJECTED" ? (dto.note ?? null) : null, reviewedAt: new Date() } })
       .catch(() => null);
     if (!v) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "That verification doesn't exist.");
+    await this.inbox.notify(
+      v.userId,
+      v.status === "VERIFIED"
+        ? { type: "seller", title: "You're verified to sell", body: "Your ID was approved. Your listings now show the ID Verified badge.", href: "/sell" }
+        : { type: "seller", title: "We couldn't verify your ID", body: v.note ? `Reason: ${v.note}. Please submit it again.` : "Please submit your ID again.", href: "/sell/verify" },
+    );
     return VerificationDto.from(v);
   }
 
@@ -123,6 +131,8 @@ export class SellerService {
   async update(userId: string, id: string, dto: SaveListingDto): Promise<ListingDto> {
     const current = await this.own(userId, id);
     const status = dto.status ? STATUS[dto.status] : current.status;
+    if (current.removedByAdmin && status === "ACTIVE")
+      throw new AppException(HttpStatus.FORBIDDEN, "LISTING_REMOVED", "This listing was taken down by Gbanjo and can't be published again. Contact support if you think this is a mistake.");
     if (status !== current.status || status === "ACTIVE") await this.assertCanSell(userId);
     if (status === "SOLD" && current.status === "DRAFT") throw invalid({ status: "Publish the listing before marking it as sold." });
     const merged: SaveListingDto = {

@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from "@nestjs/common";
 import { AppException } from "../../common/exceptions/app.exception";
 import type { Prisma } from "../../generated/prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { InboxService } from "../inbox/inbox.service";
 import { ChatEventsService } from "./chat-events.service";
 import type { ChatMessageDto, ConversationDto, MessagePageDto } from "./dto/chat.dto";
 
@@ -30,9 +31,19 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: ChatEventsService,
+    private readonly inbox: InboxService,
   ) {}
 
-  private view(userId: string, c: Row, unread: number): ConversationDto {
+  /** True when either person has blocked the other. */
+  private async blocked(a: string, b: string) {
+    return !!(await this.prisma.block.findFirst({ where: { OR: [{ blockerId: a, blockedId: b }, { blockerId: b, blockedId: a }] }, select: { blockerId: true } }));
+  }
+
+  private async assertNotBlocked(a: string, b: string) {
+    if (await this.blocked(a, b)) throw new AppException(HttpStatus.FORBIDDEN, "BLOCKED", "You can't message this person.");
+  }
+
+  private view(userId: string, c: Row, unread: number, blocks: { blockerId: string; blockedId: string }[] = []): ConversationDto {
     const role = c.buyerId === userId ? "buyer" : "seller";
     const other = role === "buyer" ? c.seller : c.buyer;
     return {
@@ -46,6 +57,8 @@ export class ChatService {
       unread,
       lastMessageAt: c.lastMessageAt,
       otherLastReadAt: role === "buyer" ? c.sellerLastReadAt : c.buyerLastReadAt,
+      blockedByMe: blocks.some((b) => b.blockerId === userId && b.blockedId === other.id),
+      blockedMe: blocks.some((b) => b.blockerId === other.id && b.blockedId === userId),
     };
   }
 
@@ -63,12 +76,14 @@ export class ChatService {
       take: 100,
     });
     const unread = await Promise.all(rows.map((c) => this.prisma.chatMessage.count({ where: this.unreadWhere(userId, c) })));
-    return rows.map((c, i) => this.view(userId, c, unread[i]));
+    const blocks = await this.prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } });
+    return rows.map((c, i) => this.view(userId, c, unread[i], blocks));
   }
 
   async get(userId: string, id: string): Promise<ConversationDto> {
     const c = await this.own(userId, id);
-    return this.view(userId, c, await this.prisma.chatMessage.count({ where: this.unreadWhere(userId, c) }));
+    const blocks = await this.prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } });
+    return this.view(userId, c, await this.prisma.chatMessage.count({ where: this.unreadWhere(userId, c) }), blocks);
   }
 
   async unreadTotal(userId: string): Promise<{ unread: number }> {
@@ -88,6 +103,7 @@ export class ChatService {
     if (!product) throw new AppException(HttpStatus.NOT_FOUND, "PRODUCT_NOT_FOUND", "This item isn't available any more.");
     if (!product.sellerId) throw new AppException(HttpStatus.BAD_REQUEST, "NO_SELLER", "This item doesn't have a seller you can message.");
     if (product.sellerId === userId) throw new AppException(HttpStatus.BAD_REQUEST, "OWN_LISTING", "This is your own listing.");
+    await this.assertNotBlocked(userId, product.sellerId);
     const c = await this.prisma.conversation.upsert({
       where: { productId_buyerId: { productId: product.id, buyerId: userId } },
       create: { productId: product.id, buyerId: userId, sellerId: product.sellerId },
@@ -109,6 +125,8 @@ export class ChatService {
 
   async send(userId: string, id: string, text: string): Promise<ChatMessageDto> {
     const c = await this.own(userId, id);
+    const otherId = c.buyerId === userId ? c.sellerId : c.buyerId;
+    await this.assertNotBlocked(userId, otherId);
     const now = new Date();
     const [m] = await this.prisma.$transaction([
       this.prisma.chatMessage.create({ data: { conversationId: id, senderId: userId, text, createdAt: now } }),
@@ -120,6 +138,9 @@ export class ChatService {
     ]);
     const message = toMessage(m);
     await this.events.publish([c.buyerId, c.sellerId], { type: "message", conversationId: id, message });
+    // Phone push only: chats have their own unread counts, so they don't go in the notifications list.
+    const me = c.buyerId === userId ? c.buyer : c.seller;
+    void this.inbox.notify(otherId, { type: "message", title: shortName(me), body: text.length > 120 ? `${text.slice(0, 117)}…` : text, href: `/messages/${id}` }, { inApp: false });
     return message;
   }
 

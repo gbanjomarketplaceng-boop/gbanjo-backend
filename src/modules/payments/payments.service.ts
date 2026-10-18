@@ -7,6 +7,7 @@ import { AppException } from "../../common/exceptions/app.exception";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
 import { REDIS } from "../../redis/redis.constants";
+import { InboxService } from "../inbox/inbox.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { WalletService } from "../wallet/wallet.service";
 import type { PaymentDto, TopUpDto } from "./dto/payments.dto";
@@ -42,6 +43,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   private readonly test?: TestPaymentProvider;
   private readonly paidHandlers = new Map<PaymentPurpose, PaidHandler>();
   private readonly afterPaid = new Map<PaymentPurpose, AfterPaidHandler>();
+  private transferHandler?: (data: { id?: string; reference?: string }) => Promise<void>;
   private readonly allowedOrigins: Set<string>;
   private readonly webhookHash?: string;
   /** e.g. https://gbanjo-backend.onrender.com/api/v1 */
@@ -54,6 +56,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     @Inject(REDIS) redis: Redis,
     private readonly config: ConfigService<Env, true>,
+    private readonly inbox: InboxService,
   ) {
     const publicUrl = (config.get("API_PUBLIC_URL", { infer: true }) ?? config.get("RENDER_EXTERNAL_URL", { infer: true }) ?? `http://localhost:${config.get("PORT", { infer: true })}`).replace(/\/$/, "");
     this.apiBase = `${publicUrl}/${config.get("API_PREFIX", { infer: true })}/v1`;
@@ -93,6 +96,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
         });
       },
       async (p) => {
+        await this.inbox.notify(p.userId, { type: "payment", title: `${naira(Number(p.amount))} added to your wallet`, body: `Top-up ${p.reference} went through.`, href: "/profile/wallet/history" });
         const user = await this.prisma.user.findUnique({ where: { id: p.userId }, select: { email: true, firstName: true } });
         if (!user) return;
         await this.notifications.message({
@@ -113,6 +117,23 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     if (this.sweeper) clearInterval(this.sweeper);
+  }
+
+  /** Withdrawals: called for Flutterwave "transfer.completed" webhooks. */
+  onTransferEvent(fn: (data: { id?: string; reference?: string }) => Promise<void>) {
+    this.transferHandler = fn;
+  }
+
+  /** The gateway bank transfers use (Flutterwave, or the test stand-in outside production). */
+  transferProvider(): PaymentProvider {
+    const p = this.flutterwave ?? this.test;
+    if (!p) throw new AppException(HttpStatus.SERVICE_UNAVAILABLE, "PAYMENTS_NOT_CONFIGURED", "Withdrawals aren't available right now. Please try again later.");
+    return p;
+  }
+
+  /** The gateway a withdrawal was sent with. */
+  providerNamed(name: string): PaymentProvider | undefined {
+    return name === "flutterwave" ? this.flutterwave : name === "test" ? this.test : undefined;
   }
 
   /** Lets another module give value when a payment for `purpose` succeeds. */
@@ -267,6 +288,11 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   async handleWebhook(signature: string | undefined, body: { event?: string; type?: string; data?: { id?: number | string; tx_ref?: string; txRef?: string } }) {
     if (!this.webhookHash || !signature || !safeEqual(signature, this.webhookHash)) {
       throw new AppException(HttpStatus.UNAUTHORIZED, "INVALID_SIGNATURE", "Webhook signature didn't match.");
+    }
+    const kind = `${body?.event ?? ""} ${body?.type ?? ""} ${(body as Record<string, unknown>)?.["event.type"] ?? ""}`.toLowerCase();
+    if (kind.includes("transfer")) {
+      await this.transferHandler?.({ id: body.data?.id ? String(body.data.id) : undefined, reference: (body.data as { reference?: string } | undefined)?.reference });
+      return { received: true };
     }
     const ref = body?.data?.tx_ref ?? body?.data?.txRef;
     if (!ref) return { received: true };

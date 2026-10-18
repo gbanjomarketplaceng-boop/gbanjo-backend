@@ -4,7 +4,8 @@ import { Job } from "bullmq";
 import { EmailChannel, SmsChannel } from "./channels/channel.interfaces";
 import { ConfigService } from "@nestjs/config";
 import type { Env } from "../../config/env.validation";
-import { ContactMessageJob, MessageJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
+import { PrismaService } from "../../prisma/prisma.service";
+import { ContactMessageJob, MessageJob, PushJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
 
 const PURPOSE_TEXT: Record<SendOtpJob["purpose"], string> = {
   signup: "verify your phone number",
@@ -22,10 +23,14 @@ export class NotificationsProcessor extends WorkerHost {
     private readonly sms: SmsChannel,
     private readonly email: EmailChannel,
     config: ConfigService<Env, true>,
+    private readonly prisma: PrismaService,
   ) {
     super();
     this.supportEmail = config.get("SUPPORT_EMAIL", { infer: true });
+    this.expoToken = config.get("EXPO_ACCESS_TOKEN", { infer: true });
   }
+
+  private readonly expoToken?: string;
 
   async process(job: Job) {
     switch (job.name) {
@@ -37,6 +42,8 @@ export class NotificationsProcessor extends WorkerHost {
         return this.contactMessage(job.data as ContactMessageJob);
       case NotificationJob.Message:
         return this.message(job.data as MessageJob);
+      case NotificationJob.Push:
+        return this.push(job.data as PushJob);
       default:
         this.logger.warn(`Unknown job "${job.name}"`);
     }
@@ -72,6 +79,20 @@ export class NotificationsProcessor extends WorkerHost {
   private async message({ email, phone, subject, text, sms }: MessageJob) {
     if (email) await this.email.send(email, subject, text);
     if (phone && sms) await this.sms.send(phone, sms);
+  }
+
+  /** Sends through Expo's push service; forgets tokens for apps that were uninstalled. https://docs.expo.dev/push-notifications/sending-notifications/ */
+  private async push({ tokens, title, body, data }: PushJob) {
+    const res = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...(this.expoToken ? { Authorization: `Bearer ${this.expoToken}` } : {}) },
+      body: JSON.stringify(tokens.map((to) => ({ to, title, body, data, sound: "default" }))),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`Expo push failed: HTTP ${res.status}`);
+    const json = (await res.json().catch(() => null)) as { data?: { status: string; details?: { error?: string } }[] } | null;
+    const gone = (json?.data ?? []).map((t, i) => (t.status === "error" && t.details?.error === "DeviceNotRegistered" ? tokens[i] : null)).filter((t): t is string => !!t);
+    if (gone.length) await this.prisma.pushToken.deleteMany({ where: { token: { in: gone } } });
   }
 
   private async passwordChanged({ email, firstName }: PasswordChangedJob) {

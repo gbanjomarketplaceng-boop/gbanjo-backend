@@ -2,7 +2,7 @@
 
 NestJS 11 · Prisma 7 (PostgreSQL via the `pg` driver adapter) · Redis (ioredis) · BullMQ.
 
-Modules: authentication, users, catalog, banners, contact, wishlist & cart, selling, addresses, chat, reviews, **orders, Flutterwave payments and the wallet** ([docs/orders-and-payments.md](docs/orders-and-payments.md)). Each has a guide in [docs/](docs/); the live API docs are at `http://localhost:4000/api/docs`.
+Modules: authentication, users, catalog, banners, contact, wishlist & cart, selling, addresses, chat, reviews, **orders, Flutterwave payments and the wallet** ([docs/orders-and-payments.md](docs/orders-and-payments.md)), **notifications, withdrawals, reports/blocking, account deletion and admin tools** ([docs/notifications-withdrawals-safety.md](docs/notifications-withdrawals-safety.md)). Each has a guide in [docs/](docs/); the live API docs are at `http://localhost:4000/api/docs`.
 
 ## Run it
 

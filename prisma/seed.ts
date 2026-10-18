@@ -2,6 +2,15 @@
  * Fills the catalog with the storefront's starter categories and products (the ones the designs show).
  * Safe to run again: rows are matched by slug and updated; flash-sale end dates are pushed a week ahead.
  *   npx prisma db seed        (or: npm run prisma:seed)
+ *
+ * Products only (leaves categories, banners and everything else as they are; only adds a category
+ * if one a product needs is missing):
+ *   npx ts-node --transpile-only prisma/seed.ts --products-only
+ *
+ * Home banners only (adds the slides that aren't there yet; never changes existing ones):
+ *   npx ts-node --transpile-only prisma/seed.ts --banners-only
+ *
+ * Prices are typical Lagos market prices in naira (Oct 2026) — adjust them here if they change.
  */
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -48,50 +57,82 @@ type Seed = {
 
 const products: Seed[] = [
   // Flash sale
-  { kind: "flash", slug: "olive-low-top-sneakers", name: "Olive low-top sneakers", imageUrl: "/images/l-olive-sneakers.png", price: 17000, oldPrice: 21250, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
+  { kind: "flash", slug: "olive-low-top-sneakers", name: "Olive low-top sneakers", imageUrl: "/images/l-olive-sneakers.png", price: 38000, oldPrice: 45000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
   {
     kind: "flash",
     slug: "textured-lace-up-sneakers",
     name: "Nike Air Force 1 Luxe ‘Olive Green’ Sneakers",
     imageUrl: "/images/pd-sneaker.png",
     gallery: ["/images/pd-photo-1.png", "/images/pd-photo-2.png", "/images/pd-photo-1.png", "/images/pd-photo-1.png"],
-    price: 17000,
-    oldPrice: 24300,
+    price: 165000,
+    oldPrice: 195000,
     category: "clothing",
     tags: "Clothing · Footwear",
     rating: 4,
     reviewCount: 32,
     variations: ["Black", "M"],
   },
-  { kind: "flash", slug: "marble-top-dining-set", name: "Marble-top dining set", imageUrl: "/images/l-marble-dining.png", price: 32000, oldPrice: 40000, category: "home-decor", tags: "Home Decor · Furniture", rating: 4, reviewCount: 9 },
+  { kind: "flash", slug: "marble-top-dining-set", name: "Marble-top dining set", imageUrl: "/images/l-marble-dining.png", price: 1250000, oldPrice: 1450000, category: "home-decor", tags: "Home Decor · Furniture", rating: 4, reviewCount: 9 },
 
   // New items
-  { kind: "new", slug: "oraimo-portable-power-bank", name: "Oraimo portable power bank", imageUrl: "/images/l-power-bank.png", price: 17000, category: "electronics", tags: "Electronics · Accessories", rating: 5, reviewCount: 14, condition: "20,000mAh · New" },
-  { kind: "new", slug: "classic-round-face-wristwatches", name: "Classic round-face wristwatches", imageUrl: "/images/l-wristwatches.png", price: 32000, category: "clothing", tags: "Clothing · Accessories", rating: 4, reviewCount: 11, condition: "One size · New" },
-  { kind: "new", slug: "white-everyday-sneakers", name: "White everyday sneakers", imageUrl: "/images/l-white-sneakers.png", price: 21000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 6 },
+  { kind: "new", slug: "oraimo-portable-power-bank", name: "Oraimo portable power bank", imageUrl: "/images/l-power-bank.png", price: 19900, category: "electronics", tags: "Electronics · Accessories", rating: 5, reviewCount: 14, condition: "20,000mAh · New" },
+  { kind: "new", slug: "classic-round-face-wristwatches", name: "Classic round-face wristwatches", imageUrl: "/images/l-wristwatches.png", price: 35000, category: "clothing", tags: "Clothing · Accessories", rating: 4, reviewCount: 11, condition: "One size · New" },
+  { kind: "new", slug: "white-everyday-sneakers", name: "White everyday sneakers", imageUrl: "/images/l-white-sneakers.png", price: 32000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 6 },
 
   // Just for you
-  { kind: "featured", slug: "spacious-duplex-with-balcony", name: "Spacious duplex with balcony", imageUrl: "/images/l-duplex-balcony.png", price: 17000, category: "properties", tags: "Properties", rating: 5, reviewCount: 4 },
-  { kind: "featured", slug: "modern-detached-home", name: "Modern detached home", imageUrl: "/images/l-detached-home.png", price: 17000, category: "properties", tags: "Properties", rating: 4, reviewCount: 7 },
-  { kind: "featured", slug: "contemporary-family-duplex", name: "Contemporary family duplex", imageUrl: "/images/l-family-duplex.png", price: 17000, category: "properties", tags: "Properties", rating: 4, reviewCount: 3 },
-  { kind: "featured", slug: "terraced-home-with-a-courtyard", name: "Terraced home with a courtyard", imageUrl: "/images/l-terraced-home.png", price: 17000, category: "properties", tags: "Properties", rating: 5, reviewCount: 5 },
+  { kind: "featured", slug: "spacious-duplex-with-balcony", name: "Spacious duplex with balcony", imageUrl: "/images/l-duplex-balcony.png", price: 150000000, category: "properties", tags: "Properties", rating: 5, reviewCount: 4 },
+  { kind: "featured", slug: "modern-detached-home", name: "Modern detached home", imageUrl: "/images/l-detached-home.png", price: 380000000, category: "properties", tags: "Properties", rating: 4, reviewCount: 7 },
+  { kind: "featured", slug: "contemporary-family-duplex", name: "Contemporary family duplex", imageUrl: "/images/l-family-duplex.png", price: 250000000, category: "properties", tags: "Properties", rating: 4, reviewCount: 3 },
+  { kind: "featured", slug: "terraced-home-with-a-courtyard", name: "Terraced home with a courtyard", imageUrl: "/images/l-terraced-home.png", price: 180000000, category: "properties", tags: "Properties", rating: 5, reviewCount: 5 },
 
   // More clothing
-  { slug: "everyday-white-blouse", name: "Everyday white blouse", imageUrl: "/images/w-white-blouse.png", price: 2400, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 5, condition: "Size S · Like new" },
-  { slug: "sunshine-summer-top", name: "Sunshine summer top", imageUrl: "/images/w-summer-top.png", price: 1800, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 3, condition: "Size M · New with tags" },
-  { slug: "cozy-pink-sweatshirt", name: "Cozy pink sweatshirt", imageUrl: "/images/w-pink-sweatshirt.png", price: 3200, category: "clothing", tags: "Clothing · Tops", rating: 5, reviewCount: 8, condition: "Size M · Very good" },
-  { slug: "classic-straight-jeans", name: "Classic straight jeans", imageUrl: "/images/w-straight-jeans.png", price: 2800, category: "clothing", tags: "Clothing · Bottoms", rating: 4, reviewCount: 6, condition: "Size 28 · Like new" },
-  { slug: "grey-canvas-sneakers", name: "Grey canvas lace-up sneakers", imageUrl: "/images/sim-1.png", price: 17000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
-  { slug: "black-slip-on-sneakers", name: "Black slip-on leather sneakers", imageUrl: "/images/sim-2.png", price: 17000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 8 },
-  { slug: "grey-knit-running-shoes", name: "Grey knit running shoes", imageUrl: "/images/sim-3.png", price: 17000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 10 },
-  { slug: "sky-blue-court-sneakers", name: "Sky-blue court sneakers", imageUrl: "/images/sim-4.png", price: 17000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 12 },
+  { slug: "everyday-white-blouse", name: "Everyday white blouse", imageUrl: "/images/w-white-blouse.png", price: 6500, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 5, condition: "Size S · Like new" },
+  { slug: "sunshine-summer-top", name: "Sunshine summer top", imageUrl: "/images/w-summer-top.png", price: 5000, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 3, condition: "Size M · New with tags" },
+  { slug: "cozy-pink-sweatshirt", name: "Cozy pink sweatshirt", imageUrl: "/images/w-pink-sweatshirt.png", price: 9500, category: "clothing", tags: "Clothing · Tops", rating: 5, reviewCount: 8, condition: "Size M · Very good" },
+  { slug: "classic-straight-jeans", name: "Classic straight jeans", imageUrl: "/images/w-straight-jeans.png", price: 12000, category: "clothing", tags: "Clothing · Bottoms", rating: 4, reviewCount: 6, condition: "Size 28 · Like new" },
+  { slug: "grey-canvas-sneakers", name: "Grey canvas lace-up sneakers", imageUrl: "/images/sim-1.png", price: 28000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
+  { slug: "black-slip-on-sneakers", name: "Black slip-on leather sneakers", imageUrl: "/images/sim-2.png", price: 35000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 8 },
+  { slug: "grey-knit-running-shoes", name: "Grey knit running shoes", imageUrl: "/images/sim-3.png", price: 30000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 10 },
+  { slug: "sky-blue-court-sneakers", name: "Sky-blue court sneakers", imageUrl: "/images/sim-4.png", price: 32000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 12 },
 ];
 
+const PRODUCTS_ONLY = process.argv.includes("--products-only");
+const BANNERS_ONLY = process.argv.includes("--banners-only");
+
+/** Home carousel slides (images in the website's public/images; the app bundles copies). */
+const banners = [
+  { eyebrow: "Happening Now", title: "Big Sale", highlight: "Up to 50%", subtitle: "More of what you love. Less than you expect.", ctaLabel: "Shop the sale", ctaHref: "/products", imageUrl: "/images/big-sale.png", backgroundColor: "#f8b91b" },
+  { eyebrow: "This Week", title: "Gadget Week", highlight: "Phones & accessories", subtitle: "Phones, power banks and gadgets from trusted sellers.", ctaLabel: "Shop electronics", ctaHref: "/products?category=electronics", imageUrl: "/images/banner-gadgets.jpg", backgroundColor: "#0a0a0d" },
+  { eyebrow: "Just Listed", title: "New Homes", highlight: "Duplexes in Lagos", subtitle: "Find your next space, listed by verified sellers.", ctaLabel: "See properties", ctaHref: "/products?category=properties", imageUrl: "/images/banner-homes.jpg", backgroundColor: "#06452a" },
+  { eyebrow: "Fresh Drop", title: "Sneaker Season", highlight: "From ₦28,000", subtitle: "New and pre-loved sneakers for every day.", ctaLabel: "Shop sneakers", ctaHref: "/products?q=sneakers", imageUrl: "/images/banner-sneakers.jpg", backgroundColor: "#4f5b34" },
+  { eyebrow: "This Month", title: "Drive Away", highlight: "Cars, bikes & parts", subtitle: "Browse vehicles from sellers near you.", ctaLabel: "See vehicles", ctaHref: "/products?category=vehicles", imageUrl: "/images/banner-vehicles.jpg", backgroundColor: "#34495e" },
+];
+
+/** Adds any of the slides above that aren't there yet (matched by title), so admin edits are never overwritten. */
+async function seedBanners() {
+  const existing = new Set((await prisma.banner.findMany({ select: { title: true } })).map((b) => b.title));
+  let added = 0;
+  for (const [i, b] of banners.entries()) {
+    if (existing.has(b.title)) continue;
+    await prisma.banner.create({ data: { ...b, sortOrder: i } });
+    added++;
+  }
+  return added;
+}
+
 async function main() {
+  if (BANNERS_ONLY) {
+    console.log(`Added ${await seedBanners()} banners (existing ones were left as they are).`);
+    return;
+  }
+
   const now = Date.now();
   const ids = new Map<string, string>();
   for (const [i, c] of categories.entries()) {
-    const row = await prisma.category.upsert({ where: { slug: c.slug }, create: { ...c, sortOrder: i }, update: { ...c, sortOrder: i } });
+    const row = PRODUCTS_ONLY
+      ? // Keep categories exactly as they are; only create one that's missing.
+        await prisma.category.upsert({ where: { slug: c.slug }, create: { ...c, sortOrder: i }, update: {} })
+      : await prisma.category.upsert({ where: { slug: c.slug }, create: { ...c, sortOrder: i }, update: { ...c, sortOrder: i } });
     ids.set(c.slug, row.id);
   }
 
@@ -121,22 +162,14 @@ async function main() {
       data: { rating: Math.round((agg._avg.rating ?? 0) * 10) / 10, reviewCount: agg._count._all },
     });
   }
-  // Home banner: only when there are none yet, so banners edited by admins are never overwritten.
-  if ((await prisma.banner.count()) === 0)
-    await prisma.banner.create({
-      data: {
-        eyebrow: "Happening Now",
-        title: "Big Sale",
-        highlight: "Up to 50%",
-        subtitle: "More of what you love. Less than you expect.",
-        ctaLabel: "Shop the sale",
-        ctaHref: "/products",
-        imageUrl: "/images/big-sale.png",
-        backgroundColor: "#f8b91b",
-      },
-    });
+  if (PRODUCTS_ONLY) {
+    console.log(`Uploaded ${products.length} products.`);
+    return;
+  }
 
-  console.log(`Seeded ${categories.length} categories, ${products.length} products and the home banner.`);
+  await seedBanners();
+
+  console.log(`Seeded ${categories.length} categories, ${products.length} products and the home banners.`);
 }
 
 main()

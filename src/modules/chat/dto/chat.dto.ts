@@ -75,6 +75,8 @@ export class ConversationDto {
   @ApiProperty({ description: "Messages from the other person you haven't read" }) unread!: number;
   @ApiProperty() lastMessageAt!: Date;
   @ApiPropertyOptional({ nullable: true, type: Date, description: "Your messages up to this time have been read" }) otherLastReadAt!: Date | null;
+  @ApiProperty({ description: "You blocked this person (neither of you can send messages)" }) blockedByMe!: boolean;
+  @ApiProperty({ description: "This person blocked you" }) blockedMe!: boolean;
 }
 
 export class MessagePageDto {

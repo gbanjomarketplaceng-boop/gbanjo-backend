@@ -1,5 +1,15 @@
 import type Redis from "ioredis";
-import type { InitializePayment, PaymentProvider, VerifiedPayment } from "./payment-provider";
+import type { Bank, InitializePayment, PaymentProvider, TransferRequest, TransferResult, VerifiedPayment } from "./payment-provider";
+
+const TEST_BANKS: Bank[] = [
+  { code: "044", name: "Access Bank" },
+  { code: "058", name: "Guaranty Trust Bank" },
+  { code: "50211", name: "Kuda Bank" },
+  { code: "999992", name: "OPay" },
+  { code: "999991", name: "PalmPay" },
+  { code: "033", name: "United Bank for Africa" },
+  { code: "057", name: "Zenith Bank" },
+];
 
 const key = (reference: string) => `testpay:${reference}`;
 
@@ -42,5 +52,25 @@ export class TestPaymentProvider implements PaymentProvider {
 
   async refund() {
     /* nothing to call */
+  }
+
+  async banks() {
+    return TEST_BANKS;
+  }
+
+  /** Any 10-digit number resolves to a test name; numbers ending 9999 don't exist. */
+  async resolveAccount(_bankCode: string, accountNumber: string) {
+    return /^\d{10}$/.test(accountNumber) && !accountNumber.endsWith("9999") ? `TEST ACCOUNT ${accountNumber.slice(-4)}` : null;
+  }
+
+  /** Transfers succeed at once, except to accounts ending 0000 (to try the failure path). */
+  async transfer(t: TransferRequest): Promise<TransferResult> {
+    return t.accountNumber.endsWith("0000")
+      ? { transferId: `test-${t.reference}`, status: "failed", message: "Test: the bank rejected this account" }
+      : { transferId: `test-${t.reference}`, status: "successful" };
+  }
+
+  async transferStatus(transferId: string): Promise<TransferResult> {
+    return { transferId, status: "pending" };
   }
 }

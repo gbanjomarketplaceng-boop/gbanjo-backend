@@ -99,6 +99,11 @@ const envSchema = z
     /** Gbanjo's commission on each sale, in percent (0 = none). */
     PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(50).default(0),
 
+    /** Optional: only needed if "Enhanced push security" is turned on for your Expo project. */
+    EXPO_ACCESS_TOKEN: optionalString,
+    /** Smallest withdrawal to a bank, in naira. */
+    WITHDRAWAL_MIN: z.coerce.number().min(100).default(1000),
+
     /** Inbox that receives Contact-page messages. */
     SUPPORT_EMAIL: z.string().email().default("support@gbanjo.com"),
 

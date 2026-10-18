@@ -1,7 +1,7 @@
 import { InjectQueue } from "@nestjs/bullmq";
 import { Injectable } from "@nestjs/common";
 import { Queue } from "bullmq";
-import { ContactMessageJob, MessageJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
+import { ContactMessageJob, MessageJob, PushJob, NOTIFICATIONS_QUEUE, NotificationJob, PasswordChangedJob, SendOtpJob } from "./notifications.constants";
 
 /** Puts notifications on the BullMQ queue so requests never wait on SMS/email providers. */
 @Injectable()
@@ -30,5 +30,11 @@ export class NotificationsService {
     if (job.email) jobs.push({ email: job.email, subject: job.subject, text: job.text });
     if (job.phone && job.sms) jobs.push({ phone: job.phone, subject: job.subject, text: "", sms: job.sms });
     return Promise.all(jobs.map((j) => this.queue.add(NotificationJob.Message, j, opts))).catch(() => null);
+  }
+
+  /** Phone push (Expo). Never throws. */
+  push(job: PushJob) {
+    if (!job.tokens.length) return Promise.resolve(null);
+    return this.queue.add(NotificationJob.Push, job, { attempts: 3, backoff: { type: "exponential", delay: 5000 } }).catch(() => null);
   }
 }

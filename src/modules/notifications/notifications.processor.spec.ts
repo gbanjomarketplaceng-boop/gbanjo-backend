@@ -5,7 +5,7 @@ describe("NotificationsProcessor · contact message", () => {
     const sent: { to: string; subject: string; text: string; opts?: { replyTo?: string } }[] = [];
     const email = { send: async (to: string, subject: string, text: string, opts?: { replyTo?: string }) => void sent.push({ to, subject, text, opts }) };
     const config = { get: () => "help@gbanjo.com" };
-    const p = new NotificationsProcessor({ send: async () => undefined } as never, email as never, config as never);
+    const p = new NotificationsProcessor({ send: async () => undefined } as never, email as never, config as never, {} as never);
     await p.process({
       name: "contact-message",
       data: { id: "m1", name: "Romina", email: "romina@email.com", topic: "Shopping", orderRef: null, subject: "Sizes?", message: "Do you have size 40?" },

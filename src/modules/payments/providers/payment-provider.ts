@@ -14,6 +14,38 @@ export abstract class PaymentProvider {
 
   /** Refunds part or all of a paid transaction back to the card. Throws if the gateway refuses. */
   abstract refund(transactionId: string, amount: number): Promise<void>;
+
+  /** Nigerian banks money can be sent to. */
+  abstract banks(): Promise<Bank[]>;
+
+  /** The account holder's name for an account number (null when the bank doesn't know it). */
+  abstract resolveAccount(bankCode: string, accountNumber: string): Promise<string | null>;
+
+  /** Starts a bank transfer from our Flutterwave balance. */
+  abstract transfer(t: TransferRequest): Promise<TransferResult>;
+
+  /** Current state of a transfer started earlier. */
+  abstract transferStatus(transferId: string): Promise<TransferResult>;
+}
+
+export interface Bank {
+  code: string;
+  name: string;
+}
+
+export interface TransferRequest {
+  reference: string;
+  bankCode: string;
+  accountNumber: string;
+  amount: number;
+  narration: string;
+}
+
+export interface TransferResult {
+  transferId: string;
+  /** successful | failed | pending */
+  status: "successful" | "failed" | "pending";
+  message?: string;
 }
 
 export interface InitializePayment {

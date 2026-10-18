@@ -5,6 +5,7 @@ export const NotificationJob = {
   PasswordChanged: "password-changed",
   ContactMessage: "contact-message",
   Message: "message",
+  Push: "push",
 } as const;
 
 export type OtpPurpose = "signup" | "password_reset";
@@ -43,4 +44,13 @@ export interface MessageJob {
   text: string;
   /** Text-message body (keep it short); no SMS is sent without it. */
   sms?: string;
+}
+
+/** A phone push through Expo's push service. */
+export interface PushJob {
+  tokens: string[];
+  title: string;
+  body: string;
+  /** Sent to the app with the push, e.g. { href: "/orders/123" }. */
+  data?: Record<string, string>;
 }

@@ -1,6 +1,12 @@
 import { HttpStatus, Logger } from "@nestjs/common";
 import { AppException } from "../../../common/exceptions/app.exception";
-import type { InitializePayment, PaymentProvider, VerifiedPayment } from "./payment-provider";
+import type { Bank, InitializePayment, PaymentProvider, TransferRequest, TransferResult, VerifiedPayment } from "./payment-provider";
+
+/** Flutterwave transfer statuses → ours. */
+export const transferState = (s: string): TransferResult["status"] => {
+  const v = String(s).toUpperCase();
+  return v === "SUCCESSFUL" ? "successful" : v === "FAILED" ? "failed" : "pending";
+};
 
 /** Our method names → Flutterwave's payment_options. */
 const OPTIONS: Record<string, string> = {
@@ -88,5 +94,34 @@ export class FlutterwaveProvider implements PaymentProvider {
   async refund(transactionId: string, amount: number) {
     const res = await this.call<unknown>(`/transactions/${encodeURIComponent(transactionId)}/refund`, { method: "POST", body: { amount } });
     if (res.status !== "success") throw new Error(res.message || "Refund refused");
+  }
+
+  async banks(): Promise<Bank[]> {
+    const res = await this.call<{ code: string; name: string }[]>("/banks/NG");
+    if (res.status !== "success" || !Array.isArray(res.data)) throw new AppException(HttpStatus.BAD_GATEWAY, "PAYMENT_PROVIDER_ERROR", "We couldn't load the list of banks. Please try again.");
+    return res.data.map((b) => ({ code: String(b.code), name: b.name })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async resolveAccount(bankCode: string, accountNumber: string) {
+    const res = await this.call<{ account_name?: string }>("/accounts/resolve", { method: "POST", body: { account_number: accountNumber, account_bank: bankCode } });
+    return res.status === "success" && res.data?.account_name ? res.data.account_name : null;
+  }
+
+  async transfer(t: TransferRequest): Promise<TransferResult> {
+    const res = await this.call<{ id: number; status: string; complete_message?: string }>("/transfers", {
+      method: "POST",
+      body: { account_bank: t.bankCode, account_number: t.accountNumber, amount: t.amount, narration: t.narration, currency: "NGN", debit_currency: "NGN", reference: t.reference },
+    });
+    if (res.status !== "success" || !res.data?.id) {
+      this.logger.error(`transfer ${t.reference}: ${res.message}`);
+      return { transferId: "", status: "failed", message: res.message || "The transfer was refused" };
+    }
+    return { transferId: String(res.data.id), status: transferState(res.data.status), message: res.data.complete_message };
+  }
+
+  async transferStatus(transferId: string): Promise<TransferResult> {
+    const res = await this.call<{ id: number; status: string; complete_message?: string }>(`/transfers/${encodeURIComponent(transferId)}`);
+    if (res.status !== "success" || !res.data) return { transferId, status: "pending" };
+    return { transferId, status: transferState(res.data.status), message: res.data.complete_message };
   }
 }

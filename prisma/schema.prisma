@@ -20,6 +20,21 @@ enum Role {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+  /// The person deleted their account (personal details are wiped; orders keep a "Deleted user").
+  DELETED
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  SUCCESSFUL
+  FAILED
 }
 
 enum ProductStatus {
@@ -69,6 +84,8 @@ enum WalletTxType {
   ORDER_PAYMENT
   REFUND
   SALE
+  /// Money sent to the person's bank (negative), or put back when the transfer fails (positive).
+  WITHDRAWAL
 }
 
 enum WalletTxStatus {
@@ -93,6 +110,9 @@ model User {
   phoneVerifiedAt DateTime?  @map("phone_verified_at")
   emailVerifiedAt DateTime?  @map("email_verified_at")
   lastLoginAt     DateTime?  @map("last_login_at")
+  /// Notification and privacy choices, e.g. {"orderUpdates":true,"offers":false}. Missing keys use the defaults.
+  preferences     Json       @default("{}")
+  deletedAt       DateTime?  @map("deleted_at")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
@@ -111,6 +131,14 @@ model User {
   payments            Payment[]
   purchases           Order[]        @relation("OrderBuyer")
   sales               Order[]        @relation("OrderSeller")
+  notifications       Notification[]
+  pushTokens          PushToken[]
+  reportsMade         Report[]       @relation("ReportReporter")
+  reportsAgainst      Report[]       @relation("ReportTargetUser")
+  blocking            Block[]        @relation("BlockBlocker")
+  blockedBy           Block[]        @relation("BlockBlocked")
+  bankAccount         BankAccount?
+  withdrawals         Withdrawal[]
 
   @@map("users")
 }
@@ -353,6 +381,8 @@ model Product {
   flashSaleEndsAt DateTime? @map("flash_sale_ends_at")
   /// Editorial boost for "Just For You" (higher shows first).
   featuredScore   Int       @default(0) @map("featured_score")
+  /// Taken down by an admin: the seller can't publish it again.
+  removedByAdmin  Boolean   @default(false) @map("removed_by_admin")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -363,6 +393,7 @@ model Product {
   conversations Conversation[]
   reviews       Review[]
   orderItems    OrderItem[]
+  reports       Report[]
 
   @@index([categoryId, status])
   @@index([sellerId, status])
@@ -545,4 +576,123 @@ model Review {
   @@unique([productId, userId])
   @@index([productId, createdAt])
   @@map("reviews")
+}
+
+
+/// In-app notification (the bell / Notifications screen). Also sent as a phone push when the person allows it.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  /// order | payment | seller | message | withdrawal | account
+  type      String
+  title     String
+  body      String
+  /// Where tapping it goes, e.g. "/orders/92287157" (same path on the website and in the app).
+  href      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// An Expo push token for one of the person's phones.
+model PushToken {
+  token      String   @id
+  userId     String   @map("user_id")
+  /// ios | android
+  platform   String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+/// Someone flagging a listing or a person for the admins to look at.
+model Report {
+  id           String       @id @default(cuid())
+  reporterId   String       @map("reporter_id")
+  /// product | user
+  targetType   String       @map("target_type")
+  productId    String?      @map("product_id")
+  targetUserId String?      @map("target_user_id")
+  /// scam | fake | prohibited | offensive | other
+  reason       String
+  details      String       @default("")
+  status       ReportStatus @default(OPEN)
+  /// What the admin did / decided.
+  note         String?
+  resolvedAt   DateTime?    @map("resolved_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  reporter   User     @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  targetUser User?    @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("reports")
+}
+
+/// The blocker won't get messages from the blocked person (and can't message them).
+model Block {
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+/// Where the person's withdrawals are sent (one saved account; saving again replaces it).
+model BankAccount {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  bankCode      String   @map("bank_code")
+  bankName      String   @map("bank_name")
+  accountNumber String   @map("account_number")
+  /// Name the bank returned for the account number.
+  accountName   String   @map("account_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bank_accounts")
+}
+
+/// Wallet money sent to a bank account through Flutterwave transfers.
+model Withdrawal {
+  id                 String           @id @default(cuid())
+  userId             String           @map("user_id")
+  /// Our transfer reference, e.g. "WDR-MGQ3K2X1-8F2A9C".
+  reference          String           @unique
+  amount             Decimal          @db.Decimal(14, 2)
+  bankCode           String           @map("bank_code")
+  bankName           String           @map("bank_name")
+  accountNumber      String           @map("account_number")
+  accountName        String           @map("account_name")
+  status             WithdrawalStatus @default(PENDING)
+  /// "flutterwave" or "test".
+  provider           String
+  providerTransferId String?          @map("provider_transfer_id")
+  failureReason      String?          @map("failure_reason")
+  completedAt        DateTime?        @map("completed_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("withdrawals")
 }

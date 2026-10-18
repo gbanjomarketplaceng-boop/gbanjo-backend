@@ -7,6 +7,7 @@ import { normalizeNigerianPhone } from "../../common/utils/phone";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AuthUser } from "../auth/types/auth-user";
+import { InboxService } from "../inbox/inbox.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PaymentsService, toDto as paymentDto } from "../payments/payments.service";
 import { WalletService } from "../wallet/wallet.service";
@@ -59,6 +60,7 @@ export class OrdersService {
     private readonly wallets: WalletService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<Env, true>,
+    private readonly inbox: InboxService,
   ) {
     payments.onPaid(
       "ORDER",
@@ -411,6 +413,8 @@ export class OrdersService {
       const buyer = orders[0].buyer;
       const lines = orders.flatMap((o) => o.items.map((i) => `• ${i.name}${i.option ? ` (${i.option})` : ""} × ${i.qty} — ${naira(Number(i.price) * i.qty)}`));
       const total = orders.reduce((s, o) => s + Number(o.total), 0);
+      for (const o of orders)
+        await this.inbox.notify(o.buyerId, { type: "order", title: `Order #${o.id} confirmed`, body: `We've received your payment. We'll let you know when it ships.`, href: `/orders/${o.id}` });
       await this.notifications.message({
         email: orders[0].email ?? buyer.email,
         subject: `Order confirmed: ${orders.map((o) => `#${o.id}`).join(", ")}`,
@@ -419,6 +423,12 @@ export class OrdersService {
       for (const o of orders) {
         if (!o.seller) continue;
         const count = o.items.reduce((n, i) => n + i.qty, 0);
+        await this.inbox.notify(o.seller.id, {
+          type: "order",
+          title: `New order #${o.id}`,
+          body: `${count} item${count === 1 ? "" : "s"} · ${naira(Number(o.subtotal))}. Pack it and update the buyer.`,
+          href: `/orders/${o.id}`,
+        });
         await this.notifications.message({
           email: o.seller.email,
           phone: o.seller.phone,
@@ -435,6 +445,9 @@ export class OrdersService {
   private async notifyStage(o: OrderRow) {
     if (o.stage < 2) return;
     const label = STAGES[o.stage];
+    const body = o.stage === 4 ? "Enjoy your purchase! You can leave a review on the product page." : o.stage === 3 ? "Please keep your phone close." : "It's on its way to you.";
+    await this.inbox.notify(o.buyerId, { type: "order", title: `Order #${o.id}: ${label}`, body, href: `/orders/${o.id}` });
+    if (!(await this.inbox.preferences(o.buyerId)).orderUpdates) return;
     await this.notifications.message({
       email: o.email ?? o.buyer.email,
       phone: o.phone,
@@ -446,6 +459,9 @@ export class OrdersService {
 
   private async notifyCanceled(o: OrderRow) {
     const refund = o.refundTo === "card" ? "Your payment is being refunded to your card (this can take a few days)." : "Your payment has been refunded to your Gbanjo wallet.";
+    if (o.canceledBy !== "buyer") await this.inbox.notify(o.buyerId, { type: "order", title: `Order #${o.id} canceled`, body: refund, href: `/orders/${o.id}` });
+    if (o.seller && o.canceledBy !== "seller")
+      await this.inbox.notify(o.seller.id, { type: "order", title: `Order #${o.id} canceled`, body: "You don't need to send it.", href: `/orders/${o.id}` });
     await this.notifications.message({
       email: o.email ?? o.buyer.email,
       subject: `Order #${o.id} canceled`,
