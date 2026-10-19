@@ -14,7 +14,7 @@ export interface WalletView {
 
 export interface WalletTransactionView {
   id: string;
-  type: "top-up" | "order-payment" | "refund" | "sale" | "withdrawal";
+  type: "top-up" | "order-payment" | "refund" | "sale" | "withdrawal" | "adjustment";
   status: "pending" | "completed";
   /** Signed: positive is money in. */
   amount: number;
@@ -47,6 +47,7 @@ const TYPE: Record<WalletTxType, WalletTransactionView["type"]> = {
   REFUND: "refund",
   SALE: "sale",
   WITHDRAWAL: "withdrawal",
+  ADJUSTMENT: "adjustment",
 };
 
 /**

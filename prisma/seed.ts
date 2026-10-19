@@ -58,27 +58,27 @@ type Seed = {
 
 const products: Seed[] = [
   // Flash sale
-  { kind: "flash", slug: "olive-low-top-sneakers", name: "Olive low-top sneakers", imageUrl: "/images/l-olive-sneakers.png", price: 38000, oldPrice: 45000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
+  { kind: "flash", slug: "olive-low-top-sneakers", name: "Olive low-top sneakers", imageUrl: "/images/l-olive-sneakers.png", price: 9000, oldPrice: 12000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
   {
     kind: "flash",
     slug: "textured-lace-up-sneakers",
     name: "Nike Air Force 1 Luxe ‘Olive Green’ Sneakers",
     imageUrl: "/images/pd-sneaker.png",
     gallery: ["/images/pd-photo-1.png", "/images/pd-photo-2.png", "/images/pd-photo-1.png", "/images/pd-photo-1.png"],
-    price: 165000,
-    oldPrice: 195000,
+    price: 22000,
+    oldPrice: 24000,
     category: "clothing",
     tags: "Clothing · Footwear",
     rating: 4,
     reviewCount: 32,
     variations: ["Black", "M"],
   },
-  { kind: "flash", slug: "marble-top-dining-set", name: "Marble-top dining set", imageUrl: "/images/l-marble-dining.png", price: 1250000, oldPrice: 1450000, category: "home-decor", tags: "Home Decor · Furniture", rating: 4, reviewCount: 9 },
+  { kind: "flash", slug: "marble-top-dining-set", name: "Marble-top dining set", imageUrl: "/images/l-marble-dining.png", price: 21000, oldPrice: 24000, category: "home-decor", tags: "Home Decor · Furniture", rating: 4, reviewCount: 9 },
 
   // New items
-  { kind: "new", slug: "oraimo-portable-power-bank", name: "Oraimo portable power bank", imageUrl: "/images/l-power-bank.png", price: 19900, category: "electronics", tags: "Electronics · Accessories", rating: 5, reviewCount: 14, condition: "20,000mAh · New" },
-  { kind: "new", slug: "classic-round-face-wristwatches", name: "Classic round-face wristwatches", imageUrl: "/images/l-wristwatches.png", price: 35000, category: "clothing", tags: "Clothing · Accessories", rating: 4, reviewCount: 11, condition: "One size · New" },
-  { kind: "new", slug: "white-everyday-sneakers", name: "White everyday sneakers", imageUrl: "/images/l-white-sneakers.png", price: 32000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 6 },
+  { kind: "new", slug: "oraimo-portable-power-bank", name: "Oraimo portable power bank", imageUrl: "/images/l-power-bank.png", price: 8500, category: "electronics", tags: "Electronics · Accessories", rating: 5, reviewCount: 14, condition: "20,000mAh · New" },
+  { kind: "new", slug: "classic-round-face-wristwatches", name: "Classic round-face wristwatches", imageUrl: "/images/l-wristwatches.png", price: 7500, category: "clothing", tags: "Clothing · Accessories", rating: 4, reviewCount: 11, condition: "One size · New" },
+  { kind: "new", slug: "white-everyday-sneakers", name: "White everyday sneakers", imageUrl: "/images/l-white-sneakers.png", price: 8000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 6 },
 
   // Just for you
   { kind: "featured", slug: "spacious-duplex-with-balcony", name: "Spacious duplex with balcony", imageUrl: "/images/l-duplex-balcony.png", price: 150000000, category: "properties", tags: "Properties", rating: 5, reviewCount: 4 },
@@ -87,14 +87,14 @@ const products: Seed[] = [
   { kind: "featured", slug: "terraced-home-with-a-courtyard", name: "Terraced home with a courtyard", imageUrl: "/images/l-terraced-home.png", price: 180000000, category: "properties", tags: "Properties", rating: 5, reviewCount: 5 },
 
   // More clothing
-  { slug: "everyday-white-blouse", name: "Everyday white blouse", imageUrl: "/images/w-white-blouse.png", price: 6500, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 5, condition: "Size S · Like new" },
-  { slug: "sunshine-summer-top", name: "Sunshine summer top", imageUrl: "/images/w-summer-top.png", price: 5000, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 3, condition: "Size M · New with tags" },
-  { slug: "cozy-pink-sweatshirt", name: "Cozy pink sweatshirt", imageUrl: "/images/w-pink-sweatshirt.png", price: 9500, category: "clothing", tags: "Clothing · Tops", rating: 5, reviewCount: 8, condition: "Size M · Very good" },
-  { slug: "classic-straight-jeans", name: "Classic straight jeans", imageUrl: "/images/w-straight-jeans.png", price: 12000, category: "clothing", tags: "Clothing · Bottoms", rating: 4, reviewCount: 6, condition: "Size 28 · Like new" },
-  { slug: "grey-canvas-sneakers", name: "Grey canvas lace-up sneakers", imageUrl: "/images/sim-1.png", price: 28000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
-  { slug: "black-slip-on-sneakers", name: "Black slip-on leather sneakers", imageUrl: "/images/sim-2.png", price: 35000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 8 },
-  { slug: "grey-knit-running-shoes", name: "Grey knit running shoes", imageUrl: "/images/sim-3.png", price: 30000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 10 },
-  { slug: "sky-blue-court-sneakers", name: "Sky-blue court sneakers", imageUrl: "/images/sim-4.png", price: 32000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 12 },
+  { slug: "everyday-white-blouse", name: "Everyday white blouse", imageUrl: "/images/w-white-blouse.png", price: 2000, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 5, condition: "Size S · Like new" },
+  { slug: "sunshine-summer-top", name: "Sunshine summer top", imageUrl: "/images/w-summer-top.png", price: 1500, category: "clothing", tags: "Clothing · Tops", rating: 4, reviewCount: 3, condition: "Size M · New with tags" },
+  { slug: "cozy-pink-sweatshirt", name: "Cozy pink sweatshirt", imageUrl: "/images/w-pink-sweatshirt.png", price: 3000, category: "clothing", tags: "Clothing · Tops", rating: 5, reviewCount: 8, condition: "Size M · Very good" },
+  { slug: "classic-straight-jeans", name: "Classic straight jeans", imageUrl: "/images/w-straight-jeans.png", price: 3500, category: "clothing", tags: "Clothing · Bottoms", rating: 4, reviewCount: 6, condition: "Size 28 · Like new" },
+  { slug: "grey-canvas-sneakers", name: "Grey canvas lace-up sneakers", imageUrl: "/images/sim-1.png", price: 7000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 20 },
+  { slug: "black-slip-on-sneakers", name: "Black slip-on leather sneakers", imageUrl: "/images/sim-2.png", price: 8500, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 8 },
+  { slug: "grey-knit-running-shoes", name: "Grey knit running shoes", imageUrl: "/images/sim-3.png", price: 7500, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 10 },
+  { slug: "sky-blue-court-sneakers", name: "Sky-blue court sneakers", imageUrl: "/images/sim-4.png", price: 8000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 12 },
 ];
 
 const images = imageResolver();
@@ -106,7 +106,7 @@ const banners = [
   { eyebrow: "Happening Now", title: "Big Sale", highlight: "Up to 50%", subtitle: "More of what you love. Less than you expect.", ctaLabel: "Shop the sale", ctaHref: "/products", imageUrl: "/images/big-sale.png", backgroundColor: "#f8b91b" },
   { eyebrow: "This Week", title: "Gadget Week", highlight: "Phones & accessories", subtitle: "Phones, power banks and gadgets from trusted sellers.", ctaLabel: "Shop electronics", ctaHref: "/products?category=electronics", imageUrl: "/images/banner-gadgets.jpg", backgroundColor: "#0a0a0d" },
   { eyebrow: "Just Listed", title: "New Homes", highlight: "Duplexes in Lagos", subtitle: "Find your next space, listed by verified sellers.", ctaLabel: "See properties", ctaHref: "/products?category=properties", imageUrl: "/images/banner-homes.jpg", backgroundColor: "#06452a" },
-  { eyebrow: "Fresh Drop", title: "Sneaker Season", highlight: "From ₦28,000", subtitle: "New and pre-loved sneakers for every day.", ctaLabel: "Shop sneakers", ctaHref: "/products?q=sneakers", imageUrl: "/images/banner-sneakers.jpg", backgroundColor: "#4f5b34" },
+  { eyebrow: "Fresh Drop", title: "Sneaker Season", highlight: "From ₦7,000", subtitle: "New and pre-loved sneakers for every day.", ctaLabel: "Shop sneakers", ctaHref: "/products?q=sneakers", imageUrl: "/images/banner-sneakers.jpg", backgroundColor: "#4f5b34" },
   { eyebrow: "This Month", title: "Drive Away", highlight: "Cars, bikes & parts", subtitle: "Browse vehicles from sellers near you.", ctaLabel: "See vehicles", ctaHref: "/products?category=vehicles", imageUrl: "/images/banner-vehicles.jpg", backgroundColor: "#34495e" },
 ];
 

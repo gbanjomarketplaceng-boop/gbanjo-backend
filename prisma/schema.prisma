@@ -17,6 +17,15 @@ enum Role {
   ADMIN
 }
 
+/// What an admin may do. SUPER: everything (team, settings). FINANCE: money, orders, payouts.
+/// SUPPORT: people, orders, reports, seller IDs, contact. CATALOG: listings, categories, vouchers, banners, reviews.
+enum AdminRole {
+  SUPER
+  FINANCE
+  SUPPORT
+  CATALOG
+}
+
 enum UserStatus {
   ACTIVE
   SUSPENDED
@@ -31,6 +40,8 @@ enum ReportStatus {
 }
 
 enum WithdrawalStatus {
+  /// Above the approval limit: waits for a finance admin (the money is already held from the wallet).
+  AWAITING_APPROVAL
   PENDING
   PROCESSING
   SUCCESSFUL
@@ -86,6 +97,8 @@ enum WalletTxType {
   SALE
   /// Money sent to the person's bank (negative), or put back when the transfer fails (positive).
   WITHDRAWAL
+  /// Manual correction by a finance admin (+ or −), always with a reason.
+  ADJUSTMENT
 }
 
 enum WalletTxStatus {
@@ -106,6 +119,8 @@ model User {
   passwordHash    String?    @map("password_hash")
   avatarUrl       String?    @map("avatar_url")
   role            Role       @default(USER)
+  /// Set for admins (role ADMIN): which parts of the admin panel they can use.
+  adminRole       AdminRole? @map("admin_role")
   status          UserStatus @default(ACTIVE)
   phoneVerifiedAt DateTime?  @map("phone_verified_at")
   emailVerifiedAt DateTime?  @map("email_verified_at")
@@ -219,6 +234,7 @@ model WalletTransaction {
 
   @@index([walletId, createdAt])
   @@index([status, availableAt])
+  @@index([type, createdAt])
   @@map("wallet_transactions")
 }
 
@@ -277,6 +293,8 @@ model Order {
   discount       Decimal     @default(0) @db.Decimal(14, 2)
   total          Decimal     @db.Decimal(14, 2)
   voucherCode    String?     @map("voucher_code")
+  /// Gbanjo's commission, worked out when the order is delivered (PLATFORM_FEE_PERCENT of the items at that time).
+  platformFee    Decimal     @default(0) @map("platform_fee") @db.Decimal(14, 2)
   etaFrom        DateTime    @map("eta_from")
   etaTo          DateTime    @map("eta_to")
   paidAt         DateTime?   @map("paid_at")
@@ -297,6 +315,7 @@ model Order {
   @@index([buyerId, status, createdAt])
   @@index([sellerId, status, createdAt])
   @@index([paymentId])
+  @@index([status, paidAt])
   @@map("orders")
 }
 
@@ -323,11 +342,18 @@ model OrderItem {
 
 /// Discount codes typed at checkout, e.g. GBANJO10 = 10% off the items.
 model Voucher {
-  code       String    @id
-  percentOff Int       @map("percent_off")
-  active     Boolean   @default(true)
-  expiresAt  DateTime? @map("expires_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  code        String    @id
+  percentOff  Int       @map("percent_off")
+  active      Boolean   @default(true)
+  expiresAt   DateTime? @map("expires_at")
+  /// Shown to admins only, e.g. "Launch week promo".
+  description String    @default("")
+  /// How many checkouts may use it (null = no limit).
+  maxUses     Int?      @map("max_uses")
+  usedCount   Int       @default(0) @map("used_count")
+  /// Items total (₦) needed before it applies (null = any amount).
+  minOrder    Decimal?  @map("min_order") @db.Decimal(14, 2)
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   @@map("vouchers")
 }
@@ -695,4 +721,33 @@ model Withdrawal {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@map("withdrawals")
+}
+
+/// Business settings changed from the admin panel (e.g. platformFeePercent). Missing keys use the .env defaults.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+/// Everything an admin changes (who, what, when), for accountability.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String   @map("admin_id")
+  adminName  String   @map("admin_name")
+  /// e.g. "PATCH admin/users/:id"
+  action     String
+  /// e.g. "Suspended a user"
+  summary    String
+  targetId   String?  @map("target_id")
+  details    Json     @default("{}")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([adminId, createdAt])
+  @@map("admin_audit_logs")
 }

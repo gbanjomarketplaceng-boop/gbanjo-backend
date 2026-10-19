@@ -84,8 +84,8 @@ export class UpdateProductStatusDto {
 }
 
 export class AdminWithdrawalsQuery {
-  @ApiPropertyOptional({ enum: ["pending", "processing", "successful", "failed"] })
+  @ApiPropertyOptional({ enum: ["awaiting_approval", "pending", "processing", "successful", "failed"] })
   @IsOptional()
-  @IsIn(["pending", "processing", "successful", "failed"])
-  status?: "pending" | "processing" | "successful" | "failed";
+  @IsIn(["awaiting_approval", "pending", "processing", "successful", "failed"])
+  status?: "awaiting_approval" | "pending" | "processing" | "successful" | "failed";
 }

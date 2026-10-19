@@ -14,7 +14,7 @@ export const DEFAULT_PREFERENCES: PreferencesDto = {
   analytics: true,
 };
 
-export type NotificationType = "order" | "payment" | "seller" | "message" | "withdrawal" | "account";
+export type NotificationType = "order" | "payment" | "seller" | "message" | "withdrawal" | "account" | "announcement" | "promo";
 
 export interface NewNotification {
   type: NotificationType;
@@ -30,6 +30,7 @@ const PUSH_SETTING: Partial<Record<NotificationType, keyof PreferencesDto>> = {
   payment: "orderUpdates",
   withdrawal: "orderUpdates",
   message: "messages",
+  promo: "offers",
 };
 
 const EXPO_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$/;
@@ -69,6 +70,33 @@ export class InboxService {
     } catch (e) {
       this.logger.warn(`notify ${userId}: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * Sends the same notification to many people (admin broadcast). Saved in bulk; phone pushes go out in
+   * batches of 100, and promotions only reach people who turned on "Offers & recommendations".
+   */
+  async broadcast(userIds: string[], n: NewNotification): Promise<{ sent: number; pushed: number }> {
+    let pushed = 0;
+    for (let i = 0; i < userIds.length; i += 1000) {
+      const ids = userIds.slice(i, i + 1000);
+      await this.prisma.notification.createMany({ data: ids.map((userId) => ({ userId, type: n.type, title: n.title, body: n.body, href: n.href })) });
+      const setting = PUSH_SETTING[n.type];
+      let pushTo = ids;
+      if (setting) {
+        const prefs = await this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, preferences: true } });
+        pushTo = prefs
+          .filter((u) => {
+            const saved = (u.preferences && typeof u.preferences === "object" ? u.preferences : {}) as Partial<PreferencesDto>;
+            return typeof saved[setting] === "boolean" ? saved[setting] : DEFAULT_PREFERENCES[setting];
+          })
+          .map((u) => u.id);
+      }
+      const tokens = (await this.prisma.pushToken.findMany({ where: { userId: { in: pushTo } }, select: { token: true } })).map((t) => t.token);
+      for (let j = 0; j < tokens.length; j += 100) await this.queue.push({ tokens: tokens.slice(j, j + 100), title: n.title, body: n.body, data: n.href ? { href: n.href } : undefined });
+      pushed += tokens.length;
+    }
+    return { sent: userIds.length, pushed };
   }
 
   async list(userId: string, before?: string, limit = 30): Promise<{ items: NotificationDto[]; unread: number; hasMore: boolean }> {

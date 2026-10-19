@@ -3,6 +3,7 @@ import { ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nes
 import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Public } from "../../common/decorators/public.decorator";
+import { AdminOnly } from "../../common/admin/admin-areas";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import type { AuthUser } from "../auth/types/auth-user";
 import { MyReviewDto, ReviewDto, ReviewPageDto, ReviewsQuery, SaveReviewDto } from "./dto/review.dto";
@@ -45,6 +46,7 @@ export class ReviewsController {
   }
 
   @UseGuards(AdminGuard)
+  @AdminOnly("moderation", "catalog")
   @Delete("admin/reviews/:id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Admin: remove a review" })

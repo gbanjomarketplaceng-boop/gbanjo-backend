@@ -1,11 +1,10 @@
 import { HttpStatus, Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { randomInt } from "node:crypto";
 import type { Order, OrderItem, OrderStatus, Payment, Prisma } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
 import { LocksService } from "../../common/idempotency/locks.service";
+import { SettingsService } from "../settings/settings.service";
 import { normalizeNigerianPhone } from "../../common/utils/phone";
-import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AuthUser } from "../auth/types/auth-user";
 import { InboxService } from "../inbox/inbox.service";
@@ -60,7 +59,7 @@ export class OrdersService {
     private readonly payments: PaymentsService,
     private readonly wallets: WalletService,
     private readonly notifications: NotificationsService,
-    private readonly config: ConfigService<Env, true>,
+    private readonly settings: SettingsService,
     private readonly inbox: InboxService,
     private readonly locks: LocksService,
   ) {
@@ -89,12 +88,14 @@ export class OrdersService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, firstName: true, lastName: true, phone: true } });
     const delivery = await this.delivery(userId, dto, user);
     const lines = await this.lines(userId, dto);
-    const percentOff = dto.voucher ? (await this.voucher(dto.voucher)).percentOff : 0;
+    const itemsTotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
+    const voucherCode = dto.voucher ? dto.voucher.trim().toUpperCase() : null;
+    const percentOff = voucherCode ? (await this.voucher(voucherCode, itemsTotal)).percentOff : 0;
 
     // One order per seller; the delivery fee is charged once (on the first order).
     const groups = new Map<string | null, Line[]>();
     for (const l of lines) groups.set(l.sellerId, [...(groups.get(l.sellerId) ?? []), l]);
-    const shippingFee = dto.shipping === "express" ? this.config.get("SHIPPING_EXPRESS_FEE", { infer: true }) : 0;
+    const shippingFee = dto.shipping === "express" ? (await this.settings.get()).expressShippingFee : 0;
     const now = new Date();
     const [fromDays, toDays] = ETA_DAYS[dto.shipping];
     const ids = await this.newOrderIds(groups.size);
@@ -108,6 +109,11 @@ export class OrdersService {
     const reference = this.payments.newReference();
 
     const payment = await this.prisma.$transaction(async (tx) => {
+      // Count the voucher use here, atomically, so a limited voucher can't be used more times than allowed.
+      if (percentOff && voucherCode) {
+        const used = await tx.$executeRaw`UPDATE vouchers SET used_count = used_count + 1 WHERE code = ${voucherCode} AND (max_uses IS NULL OR used_count < max_uses)`;
+        if (!used) throw new AppException(HttpStatus.CONFLICT, "VOUCHER_USED_UP", "That voucher has been fully used. Remove it to continue.", { fields: { voucher: "This voucher has been fully used." } });
+      }
       const p = await tx.payment.create({
         data: {
           reference,
@@ -136,7 +142,7 @@ export class OrdersService {
             subtotal: d.subtotal,
             discount: d.discount,
             total: d.total,
-            voucherCode: percentOff ? dto.voucher!.trim().toUpperCase() : null,
+            voucherCode: percentOff ? voucherCode : null,
             etaFrom: addDays(now, fromDays),
             etaTo: addDays(now, toDays),
             items: {
@@ -254,11 +260,19 @@ export class OrdersService {
 
   // ---------- Vouchers ----------
 
-  async voucher(code: string): Promise<VoucherDto> {
+  /** Checks a voucher (and, at checkout, that the items total is enough). */
+  async voucher(code: string, itemsTotal?: number): Promise<VoucherDto> {
     const v = await this.prisma.voucher.findUnique({ where: { code: code.trim().toUpperCase() } });
     if (!v || !v.active || (v.expiresAt && v.expiresAt < new Date()))
       throw new AppException(HttpStatus.NOT_FOUND, "INVALID_VOUCHER", "That voucher code isn't valid.", { fields: { voucher: "That voucher code isn't valid." } });
-    return { code: v.code, percentOff: v.percentOff };
+    if (v.maxUses !== null && v.usedCount >= v.maxUses)
+      throw new AppException(HttpStatus.CONFLICT, "VOUCHER_USED_UP", "That voucher has been fully used.", { fields: { voucher: "This voucher has been fully used." } });
+    const min = v.minOrder === null ? 0 : Number(v.minOrder);
+    if (itemsTotal !== undefined && itemsTotal < min)
+      throw new AppException(HttpStatus.BAD_REQUEST, "VOUCHER_MIN_ORDER", `This voucher needs items worth at least ₦${min.toLocaleString("en-NG")}.`, {
+        fields: { voucher: `Spend at least ₦${min.toLocaleString("en-NG")} on items to use this voucher.` },
+      });
+    return { code: v.code, percentOff: v.percentOff, ...(min ? { minOrder: min } : {}) };
   }
 
   // ---------- Reading ----------
@@ -316,8 +330,10 @@ export class OrdersService {
       });
       if (!count) return false;
       if (delivered && o.sellerId) {
-        const feePct = this.config.get("PLATFORM_FEE_PERCENT", { infer: true });
+        const { platformFeePercent: feePct, payoutHoldDays } = await this.settings.get();
         const earnings = Math.round(Number(o.subtotal) * (100 - feePct)) / 100;
+        // Record Gbanjo's commission on the order (finance reports add these up).
+        await tx.order.update({ where: { id }, data: { platformFee: Math.round((Number(o.subtotal) - earnings) * 100) / 100 } });
         await this.wallets.credit(tx, {
           userId: o.sellerId,
           amount: earnings,
@@ -325,7 +341,7 @@ export class OrdersService {
           reference: `sale:${o.id}`,
           description: `Sale · order #${o.id}`,
           orderId: o.id,
-          availableAt: addDays(now, this.config.get("ORDER_PAYOUT_HOLD_DAYS", { infer: true })),
+          availableAt: addDays(now, payoutHoldDays),
         });
       }
       return true;

@@ -36,7 +36,7 @@ export class WithdrawalDto {
   @ApiProperty() id!: string;
   @ApiProperty({ example: "WDR-MGQ3K2X1-8F2A9C" }) reference!: string;
   @ApiProperty({ example: 5000 }) amount!: number;
-  @ApiProperty({ enum: ["pending", "processing", "successful", "failed"] }) status!: string;
+  @ApiProperty({ enum: ["awaiting_approval", "pending", "processing", "successful", "failed"] }) status!: string;
   @ApiProperty({ example: "Access Bank" }) bankName!: string;
   @ApiProperty({ example: "******0032", description: "Last 4 digits only" }) accountNumber!: string;
   @ApiProperty({ example: "ADA OBI" }) accountName!: string;

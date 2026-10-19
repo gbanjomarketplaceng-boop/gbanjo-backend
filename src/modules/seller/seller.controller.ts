@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { AdminOnly } from "../../common/admin/admin-areas";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
@@ -66,6 +67,7 @@ export class SellerController {
   }
 
   @UseGuards(AdminGuard)
+  @AdminOnly("moderation", "users")
   @Get("admin/seller-verifications")
   @ApiOperation({ summary: "Admin: ID checks to review (with a short-lived link to the ID photo)" })
   @ApiQuery({ name: "status", required: false, enum: ["PENDING", "VERIFIED", "REJECTED"] })
@@ -75,6 +77,7 @@ export class SellerController {
   }
 
   @UseGuards(AdminGuard)
+  @AdminOnly("moderation")
   @Patch("admin/seller-verifications/:id")
   @ApiOperation({ summary: "Admin: approve or reject a seller's ID" })
   @ApiOkResponse({ type: SellerVerificationDto })

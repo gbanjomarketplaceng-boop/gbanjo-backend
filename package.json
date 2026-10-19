@@ -17,6 +17,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "make-admin": "ts-node --transpile-only prisma/make-admin.ts",
+    "create-superuser": "ts-node --transpile-only prisma/create-superuser.ts",
     "sms:test": "ts-node --transpile-only scripts/sms-test.ts",
     "start:render": "prisma migrate deploy && node dist/main"
   },

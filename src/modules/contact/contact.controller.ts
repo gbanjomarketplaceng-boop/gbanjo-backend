@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags, ApiTooMa
 import { Throttle } from "@nestjs/throttler";
 import { Client, type ClientInfo } from "../../common/decorators/client-info.decorator";
 import { Public } from "../../common/decorators/public.decorator";
+import { AdminOnly } from "../../common/admin/admin-areas";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import { ContactService } from "./contact.service";
@@ -27,6 +28,7 @@ export class ContactController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("moderation")
   @Get("admin/contact-messages")
   @ApiOperation({ summary: "Admin: latest contact messages" })
   @ApiQuery({ name: "status", required: false, enum: ["NEW", "RESOLVED"] })
@@ -37,6 +39,7 @@ export class ContactController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("moderation")
   @Patch("admin/contact-messages/:id")
   @ApiOperation({ summary: "Admin: mark a message resolved (or new again)" })
   @ApiOkResponse({ type: ContactMessageDto })

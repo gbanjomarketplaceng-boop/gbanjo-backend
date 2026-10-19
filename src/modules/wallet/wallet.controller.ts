@@ -13,7 +13,7 @@ class WalletResponseDto {
 
 class WalletTransactionDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ enum: ["top-up", "order-payment", "refund", "sale", "withdrawal"] }) type!: string;
+  @ApiProperty({ enum: ["top-up", "order-payment", "refund", "sale", "withdrawal", "adjustment"] }) type!: string;
   @ApiProperty({ enum: ["pending", "completed"] }) status!: string;
   @ApiProperty({ example: 5000, description: "Positive = money in, negative = money out" }) amount!: number;
   @ApiProperty({ example: "Wallet top-up" }) description!: string;

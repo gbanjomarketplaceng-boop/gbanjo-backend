@@ -41,7 +41,7 @@ export async function createTestApp(customize: (b: TestingModuleBuilder) => Test
   const prisma = app.get(PrismaService);
   const redis = app.get<Redis>(REDIS);
   const reset = async () => {
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "sessions", "users" CASCADE');
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "sessions", "users", "settings", "admin_audit_logs" CASCADE');
     await redis.flushdb();
   };
   return { app, prisma, redis, reset };

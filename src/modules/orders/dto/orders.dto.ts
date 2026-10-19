@@ -102,6 +102,7 @@ export class CheckVoucherDto {
 export class VoucherDto {
   @ApiProperty({ example: "GBANJO10" }) code!: string;
   @ApiProperty({ example: 10 }) percentOff!: number;
+  @ApiPropertyOptional({ example: 20000, description: "Items total (₦) needed for the voucher to apply" }) minOrder?: number;
 }
 
 export class ListOrdersQuery {

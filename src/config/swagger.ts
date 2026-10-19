@@ -16,6 +16,8 @@ const TAGS: [string, string][] = [
   ["Chat", "Buyer ↔ seller messages, with live updates over Server-Sent Events"],
   ["Uploads", "Signed Cloudinary uploads for photos and ID documents"],
   ["Contact", "Contact-page messages"],
+  ["Admin", "Back office: dashboard, money, catalog, people, team, activity log (admin roles: SUPER, FINANCE, SUPPORT, CATALOG)"],
+  ["Settings", "Business settings (commission, delivery fee, payout hold, withdrawal limits)"],
   ["Health", "Liveness / readiness"],
 ];
 

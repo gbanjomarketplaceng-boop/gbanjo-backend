@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import type { Withdrawal } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
 import { LocksService } from "../../common/idempotency/locks.service";
+import { SettingsService } from "../settings/settings.service";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InboxService } from "../inbox/inbox.service";
@@ -48,6 +49,7 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<Env, true>,
     private readonly locks: LocksService,
+    private readonly settings: SettingsService,
   ) {
     payments.onTransferEvent((d) => this.onTransferEvent(d));
   }
@@ -102,7 +104,7 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async doWithdraw(userId: string, amount: number): Promise<WithdrawalDto> {
-    const min = this.config.get("WITHDRAWAL_MIN", { infer: true });
+    const { withdrawalMin: min, withdrawalApprovalAbove } = await this.settings.get();
     if (amount < min) throw new AppException(HttpStatus.BAD_REQUEST, "AMOUNT_TOO_SMALL", `The smallest withdrawal is ${naira(min)}.`, { fields: { amount: `At least ${naira(min)}` } });
     const account = await this.prisma.bankAccount.findUnique({ where: { userId } });
     if (!account) throw new AppException(HttpStatus.BAD_REQUEST, "BANK_ACCOUNT_REQUIRED", "Add your bank account first.");
@@ -133,17 +135,48 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
         throw new AppException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_FUNDS", `You can withdraw up to ${naira(balance)}.`, { fields: { amount: `You can withdraw up to ${naira(balance)}` } });
       });
 
+    if (withdrawalApprovalAbove > 0 && amount > withdrawalApprovalAbove) {
+      // Large withdrawal: the money stays held until a finance admin approves (or rejects → refunded).
+      await this.prisma.withdrawal.update({ where: { id: w.id }, data: { status: "AWAITING_APPROVAL" } });
+      await this.inbox.notify(userId, {
+        type: "withdrawal",
+        title: "Withdrawal is being reviewed",
+        body: `${naira(amount)} to ${account.bankName} ${mask(account.accountNumber)}. We'll send it once it's approved (usually within a working day).`,
+        href: "/profile/wallet/history",
+      });
+    } else await this.send(w);
+    return toWithdrawalDto(await this.prisma.withdrawal.findUniqueOrThrow({ where: { id: w.id } }));
+  }
+
+  /** Asks Flutterwave to send the money. The final result comes back by reply, webhook or the sweep. */
+  private async send(w: Withdrawal) {
+    const provider = this.payments.providerNamed(w.provider) ?? this.payments.transferProvider();
     try {
-      const r = await provider.transfer({ reference, bankCode: account.bankCode, accountNumber: account.accountNumber, amount, narration: "Gbanjo withdrawal" });
+      const r = await provider.transfer({ reference: w.reference, bankCode: w.bankCode, accountNumber: w.accountNumber, amount: Number(w.amount), narration: "Gbanjo withdrawal" });
       if (r.status === "failed") await this.fail(w, r.message || "The bank transfer failed");
       else if (r.status === "successful") await this.succeed(w, r.transferId);
       else await this.prisma.withdrawal.update({ where: { id: w.id }, data: { status: "PROCESSING", providerTransferId: r.transferId || null } });
     } catch (e) {
       // We don't know whether Flutterwave queued it: keep the money out and wait for the webhook / an admin.
-      this.logger.error(`withdrawal ${reference}: ${(e as Error).message}`);
+      this.logger.error(`withdrawal ${w.reference}: ${(e as Error).message}`);
       await this.prisma.withdrawal.update({ where: { id: w.id }, data: { status: "PROCESSING", failureReason: "Waiting for confirmation from the bank" } });
     }
-    return toWithdrawalDto(await this.prisma.withdrawal.findUniqueOrThrow({ where: { id: w.id } }));
+  }
+
+  /** Finance admin: send a withdrawal that was waiting for approval. Safe to click twice (only one send). */
+  async approve(id: string): Promise<WithdrawalDto> {
+    const { count } = await this.prisma.withdrawal.updateMany({ where: { id, status: "AWAITING_APPROVAL" }, data: { status: "PENDING" } });
+    if (!count) throw new AppException(HttpStatus.CONFLICT, "WITHDRAWAL_NOT_WAITING", "This withdrawal isn't waiting for approval any more.");
+    await this.send(await this.prisma.withdrawal.findUniqueOrThrow({ where: { id } }));
+    return toWithdrawalDto(await this.prisma.withdrawal.findUniqueOrThrow({ where: { id } }));
+  }
+
+  /** Finance admin: refuse a withdrawal that was waiting; the money goes back to the wallet. */
+  async reject(id: string, reason: string): Promise<WithdrawalDto> {
+    const w = await this.prisma.withdrawal.findUnique({ where: { id } });
+    if (!w || w.status !== "AWAITING_APPROVAL") throw new AppException(HttpStatus.CONFLICT, "WITHDRAWAL_NOT_WAITING", "This withdrawal isn't waiting for approval any more.");
+    await this.fail(w, reason || "Not approved");
+    return toWithdrawalDto(await this.prisma.withdrawal.findUniqueOrThrow({ where: { id } }));
   }
 
   private async succeed(w: Withdrawal, transferId?: string) {
@@ -158,7 +191,7 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
   /** Marks it failed and puts the money back in the wallet (once). */
   private async fail(w: Withdrawal, reason: string) {
     const done = await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.withdrawal.updateMany({ where: { id: w.id, status: { in: ["PENDING", "PROCESSING"] } }, data: { status: "FAILED", failureReason: reason, completedAt: new Date() } });
+      const { count } = await tx.withdrawal.updateMany({ where: { id: w.id, status: { in: ["AWAITING_APPROVAL", "PENDING", "PROCESSING"] } }, data: { status: "FAILED", failureReason: reason, completedAt: new Date() } });
       if (!count) return false;
       await this.wallets.credit(tx, { userId: w.userId, amount: Number(w.amount), type: "WITHDRAWAL", reference: `withdrawal-reversal:${w.reference}`, description: `Withdrawal ${w.reference} failed — money returned` });
       return true;

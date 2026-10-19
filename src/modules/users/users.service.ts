@@ -98,15 +98,35 @@ export class UsersService {
       throw new AppException(HttpStatus.BAD_REQUEST, "CONFIRM_REQUIRED", 'Type DELETE to confirm.', { fields: { confirm: 'Type DELETE to confirm.' } });
     }
 
+    await this.eraseAccount(id, "self");
+  }
+
+  /**
+   * Deletes an account the same way for the person themselves and for an admin: refuses while money or orders are
+   * still in progress, then signs them out everywhere, removes their personal data and takes their listings down.
+   * Orders, payments and the wallet ledger stay (anonymised) for the accounts.
+   */
+  async eraseAccount(id: string, by: "self" | "admin") {
+    const you = by === "self";
     const open = await this.prisma.order.count({ where: { status: "ONGOING", OR: [{ buyerId: id }, { sellerId: id }] } });
     if (open)
-      throw new AppException(HttpStatus.CONFLICT, "HAS_OPEN_ORDERS", `You have ${open} order${open === 1 ? "" : "s"} still in progress. Finish or cancel ${open === 1 ? "it" : "them"} first.`);
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        "HAS_OPEN_ORDERS",
+        `${you ? "You have" : "They have"} ${open} order${open === 1 ? "" : "s"} still in progress. Finish or cancel ${open === 1 ? "it" : "them"} first.`,
+      );
     const wallet = await this.prisma.wallet.findUnique({ where: { userId: id }, select: { id: true, balance: true } });
     const held = wallet ? await this.prisma.walletTransaction.count({ where: { walletId: wallet.id, status: "PENDING" } }) : 0;
     if ((wallet && Number(wallet.balance) > 0) || held)
-      throw new AppException(HttpStatus.CONFLICT, "WALLET_NOT_EMPTY", "There's still money in your wallet. Withdraw it to your bank before deleting your account.");
-    if (await this.prisma.withdrawal.count({ where: { userId: id, status: { in: ["PENDING", "PROCESSING"] } } }))
-      throw new AppException(HttpStatus.CONFLICT, "WITHDRAWAL_IN_PROGRESS", "Wait for your withdrawal to finish, then try again.");
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        "WALLET_NOT_EMPTY",
+        you
+          ? "There's still money in your wallet. Withdraw it to your bank before deleting your account."
+          : "There's still money in their wallet (or earnings on hold). It must be withdrawn or adjusted to ₦0 first.",
+      );
+    if (await this.prisma.withdrawal.count({ where: { userId: id, status: { in: ["AWAITING_APPROVAL", "PENDING", "PROCESSING"] } } }))
+      throw new AppException(HttpStatus.CONFLICT, "WITHDRAWAL_IN_PROGRESS", `Wait for ${you ? "your" : "their"} withdrawal to finish, then try again.`);
 
     const now = new Date();
     await this.prisma.$transaction([
@@ -124,6 +144,8 @@ export class UsersService {
       this.prisma.user.update({
         where: { id },
         data: {
+          role: "USER",
+          adminRole: null,
           firstName: "Deleted",
           lastName: "user",
           email: `deleted-${id}@deleted.gbanjo.invalid`,

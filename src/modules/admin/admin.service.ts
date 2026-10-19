@@ -26,7 +26,7 @@ export class AdminService {
       this.prisma.report.count({ where: { status: "OPEN" } }),
       this.prisma.contactMessage.count({ where: { status: "NEW" } }),
       this.prisma.order.count({ where: { status: "ONGOING" } }),
-      this.prisma.withdrawal.count({ where: { status: { in: ["PENDING", "PROCESSING"] } } }),
+      this.prisma.withdrawal.count({ where: { status: { in: ["AWAITING_APPROVAL", "PENDING", "PROCESSING"] } } }),
     ]);
     return { users, pendingVerifications, openReports, newContactMessages, ongoingOrders, pendingWithdrawals };
   }
@@ -135,9 +135,9 @@ export class AdminService {
     return { id: slug, status };
   }
 
-  async withdrawals(status?: "pending" | "processing" | "successful" | "failed") {
+  async withdrawals(status?: "awaiting_approval" | "pending" | "processing" | "successful" | "failed") {
     const rows = await this.prisma.withdrawal.findMany({
-      where: status ? { status: status.toUpperCase() as "PENDING" | "PROCESSING" | "SUCCESSFUL" | "FAILED" } : {},
+      where: status ? { status: status.toUpperCase() as "AWAITING_APPROVAL" | "PENDING" | "PROCESSING" | "SUCCESSFUL" | "FAILED" } : {},
       orderBy: { createdAt: "desc" },
       take: 200,
       include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },

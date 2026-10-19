@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGua
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
+import { AdminOnly } from "../../common/admin/admin-areas";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import type { AuthUser } from "../auth/types/auth-user";
 import { AdminListOrdersQuery, AdvanceOrderDto, CheckoutDto, CheckoutResultDto, CheckVoucherDto, ListOrdersQuery, OrderDto, VoucherDto } from "./dto/orders.dto";
@@ -63,6 +64,7 @@ export class OrdersController {
     return this.orders.voucher(dto.code);
   }
 
+  @AdminOnly("orders")
   @Get("admin/orders")
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: "Admin: all orders (move Gbanjo-sold orders along with POST /orders/:id/advance)" })

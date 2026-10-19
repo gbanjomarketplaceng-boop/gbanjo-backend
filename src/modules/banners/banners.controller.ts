@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post
 import { ApiBearerAuth, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CacheFor } from "../../common/cache/response-cache.interceptor";
 import { Public } from "../../common/decorators/public.decorator";
+import { AdminOnly } from "../../common/admin/admin-areas";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import { BannersService } from "./banners.service";
 import { AdminBannerDto, BannerDto, CreateBannerDto, UpdateBannerDto } from "./dto/banner.dto";
@@ -22,6 +23,7 @@ export class BannersController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("content")
   @Get("admin/banners")
   @ApiOperation({ summary: "Admin: every banner, including hidden and scheduled ones" })
   @ApiOkResponse({ type: [AdminBannerDto] })
@@ -32,6 +34,7 @@ export class BannersController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("content")
   @Post("admin/banners")
   @ApiOperation({ summary: "Admin: add a banner (upload its image with purpose=banner first)" })
   @ApiOkResponse({ type: AdminBannerDto })
@@ -41,6 +44,7 @@ export class BannersController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("content")
   @Patch("admin/banners/:id")
   @ApiOperation({ summary: "Admin: change a banner (text, image, order, on/off, schedule)" })
   @ApiOkResponse({ type: AdminBannerDto })
@@ -50,6 +54,7 @@ export class BannersController {
 
   @ApiBearerAuth()
   @UseGuards(AdminGuard)
+  @AdminOnly("content")
   @Delete("admin/banners/:id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Admin: delete a banner" })
