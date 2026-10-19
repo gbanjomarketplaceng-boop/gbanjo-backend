@@ -69,6 +69,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = HttpStatus.CONFLICT;
       code = "CONFLICT";
       message = "That record already exists.";
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === "P2025") {
+      status = HttpStatus.NOT_FOUND;
+      code = "NOT_FOUND";
+      message = "We couldn't find that. It may have been removed.";
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && (exception.code === "P2034" || exception.code === "P2028")) {
+      // Two requests changed the same rows at once (write conflict / transaction timeout): safe to retry.
+      status = HttpStatus.CONFLICT;
+      code = "TRY_AGAIN";
+      message = "Something changed while we were saving. Please try again.";
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }

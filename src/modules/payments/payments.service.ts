@@ -307,15 +307,21 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Sends money back to the card a payment came from. Returns false if the gateway refused (caller refunds to the wallet instead). */
-  async refundToCard(payment: Payment, amount: number): Promise<boolean> {
+  /**
+   * Sends money back to the card. "refunded" = Flutterwave accepted it; "rejected" = Flutterwave said no
+   * (safe to refund to the wallet instead); "unknown" = no clear answer (network/timeout) — it may still go
+   * through, so we must NOT also refund to the wallet (that could pay the buyer twice).
+   */
+  async refundToCard(payment: Payment, amount: number): Promise<"refunded" | "rejected" | "unknown"> {
     const provider = this.providerFor(payment);
-    if (!provider || !payment.providerTxId) return false;
+    if (!provider || !payment.providerTxId) return "rejected";
     try {
       await provider.refund(payment.providerTxId, amount);
-      return true;
+      return "refunded";
     } catch (e) {
-      this.logger.error(`refund ${payment.reference} (${amount}): ${(e as Error).message}`);
-      return false;
+      const unknown = e instanceof AppException; // network / bad reply from the provider
+      this.logger.error(`refund ${payment.reference} (${amount}) ${unknown ? "OUTCOME UNKNOWN — check on the Flutterwave dashboard" : "refused"}: ${(e as Error).message}`);
+      return unknown ? "unknown" : "rejected";
     }
   }
 

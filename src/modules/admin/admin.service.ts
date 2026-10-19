@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import type { Prisma } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
+import { SessionCacheService } from "../../common/cache/session-cache.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InboxService } from "../inbox/inbox.service";
 import { toWithdrawalDto } from "../payments/withdrawals.service";
@@ -15,6 +16,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inbox: InboxService,
+    private readonly sessionCache: SessionCacheService,
   ) {}
 
   async overview(): Promise<OverviewDto> {
@@ -79,6 +81,7 @@ export class AdminService {
         ? [this.prisma.session.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: "suspended" } })]
         : []),
     ]);
+    await this.sessionCache.dropUser(id);
     return (await this.users(undefined)).find((x) => x.id === id) ?? null;
   }
 

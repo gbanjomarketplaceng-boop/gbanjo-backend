@@ -6,6 +6,7 @@ import type { ClientInfo } from "../../../common/decorators/client-info.decorato
 import { randomToken, safeEqualHex, sha256 } from "../../../common/utils/crypto";
 import type { Env } from "../../../config/env.validation";
 import type { User } from "../../../generated/prisma/client";
+import { SessionCacheService } from "../../../common/cache/session-cache.service";
 import { PrismaService } from "../../../prisma/prisma.service";
 import { REFRESH_REUSE_GRACE_SECONDS } from "../auth.constants";
 import type { AuthTokensDto } from "../dto/responses.dto";
@@ -26,6 +27,7 @@ export class TokenService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     config: ConfigService<Env, true>,
+    private readonly sessionCache: SessionCacheService,
   ) {
     this.accessTtl = config.get("JWT_ACCESS_TTL_SECONDS", { infer: true });
     this.refreshTtlMs = config.get("REFRESH_TOKEN_TTL_DAYS", { infer: true }) * 86_400_000;
@@ -95,15 +97,19 @@ export class TokenService {
     if (matches) await this.revokeSession(session.id, "logout");
   }
 
-  revokeSession(id: string, reason: string) {
-    return this.prisma.session.updateMany({ where: { id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
+  async revokeSession(id: string, reason: string) {
+    const r = await this.prisma.session.updateMany({ where: { id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: reason } });
+    await this.sessionCache.dropSession(id);
+    return r;
   }
 
-  revokeAllForUser(userId: string, reason: string, exceptSessionId?: string) {
-    return this.prisma.session.updateMany({
+  async revokeAllForUser(userId: string, reason: string, exceptSessionId?: string) {
+    const r = await this.prisma.session.updateMany({
       where: { userId, revokedAt: null, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
       data: { revokedAt: new Date(), revokedReason: reason },
     });
+    await this.sessionCache.dropUser(userId);
+    return r;
   }
 
   private tokens(user: Pick<User, "id" | "role">, sessionId: string, secret: string, expiresAt: Date): AuthTokensDto {

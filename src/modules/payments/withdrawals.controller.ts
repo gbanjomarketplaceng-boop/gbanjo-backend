@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Put } from "@nestjs/common";
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
 import { BankAccountDto, BankDto, SaveBankAccountDto, WithdrawalDto, WithdrawDto } from "./dto/withdrawals.dto";
 import { WithdrawalsService } from "./withdrawals.service";
@@ -40,6 +41,7 @@ export class WithdrawalsController {
   }
 
   @Post("withdrawals")
+  @Idempotent()
   @ApiOperation({ summary: "Send money from your wallet to your saved bank account" })
   @ApiCreatedResponse({ type: WithdrawalDto })
   withdraw(@CurrentUser() user: AuthUser, @Body() dto: WithdrawDto) {

@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "node:crypto";
 import type { Withdrawal } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
+import { LocksService } from "../../common/idempotency/locks.service";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InboxService } from "../inbox/inbox.service";
@@ -46,6 +47,7 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
     private readonly inbox: InboxService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<Env, true>,
+    private readonly locks: LocksService,
   ) {
     payments.onTransferEvent((d) => this.onTransferEvent(d));
   }
@@ -91,7 +93,15 @@ export class WithdrawalsService implements OnModuleInit, OnModuleDestroy {
     return rows.map(toWithdrawalDto);
   }
 
-  async withdraw(userId: string, amount: number): Promise<WithdrawalDto> {
+  /** One withdrawal per person at a time. */
+  withdraw(userId: string, amount: number): Promise<WithdrawalDto> {
+    return this.locks.withLock(`withdraw:${userId}`, () => this.doWithdraw(userId, amount), {
+      busyCode: "WITHDRAWAL_IN_PROGRESS",
+      busyMessage: "Your last withdrawal is still being sent. Please wait a moment.",
+    });
+  }
+
+  private async doWithdraw(userId: string, amount: number): Promise<WithdrawalDto> {
     const min = this.config.get("WITHDRAWAL_MIN", { infer: true });
     if (amount < min) throw new AppException(HttpStatus.BAD_REQUEST, "AMOUNT_TOO_SMALL", `The smallest withdrawal is ${naira(min)}.`, { fields: { amount: `At least ${naira(min)}` } });
     const account = await this.prisma.bankAccount.findUnique({ where: { userId } });

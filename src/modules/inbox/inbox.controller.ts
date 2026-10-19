@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, Post, Put, 
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import type { AuthUser } from "../auth/types/auth-user";
-import { ListNotificationsQuery, MarkReadDto, NotificationPageDto, PreferencesDto, PushTokenDto, UnreadDto, UpdatePreferencesDto } from "./dto/inbox.dto";
+import { ListNotificationsQuery, MarkReadDto, NotificationPageDto, PreferencesDto, PushTokenDto, NotificationUnreadDto, UpdatePreferencesDto } from "./dto/inbox.dto";
 import { InboxService } from "./inbox.service";
 
 @ApiTags("Notifications")
@@ -20,7 +20,7 @@ export class InboxController {
 
   @Get("unread")
   @ApiOperation({ summary: "How many notifications are unread (for the badge)" })
-  @ApiOkResponse({ type: UnreadDto })
+  @ApiOkResponse({ type: NotificationUnreadDto })
   unread(@CurrentUser() user: AuthUser) {
     return this.inbox.unread(user.id);
   }
@@ -28,7 +28,7 @@ export class InboxController {
   @Post("read")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Mark notifications read (all of them when no ids are given)" })
-  @ApiOkResponse({ type: UnreadDto })
+  @ApiOkResponse({ type: NotificationUnreadDto })
   read(@CurrentUser() user: AuthUser, @Body() dto: MarkReadDto) {
     return this.inbox.markRead(user.id, dto.ids);
   }

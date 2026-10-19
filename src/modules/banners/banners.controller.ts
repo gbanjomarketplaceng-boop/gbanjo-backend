@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { CacheFor } from "../../common/cache/response-cache.interceptor";
 import { Public } from "../../common/decorators/public.decorator";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import { BannersService } from "./banners.service";
@@ -11,6 +12,7 @@ export class BannersController {
   constructor(private readonly banners: BannersService) {}
 
   @Public()
+  @CacheFor(60)
   @Get("banners")
   @ApiOperation({ summary: "Home-page slides that are live right now" })
   @ApiOkResponse({ type: [BannerDto] })

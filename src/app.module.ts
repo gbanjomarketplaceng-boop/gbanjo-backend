@@ -26,6 +26,7 @@ import { OrdersModule } from "./modules/orders/orders.module";
 import { InboxModule } from "./modules/inbox/inbox.module";
 import { SafetyModule } from "./modules/safety/safety.module";
 import { AdminModule } from "./modules/admin/admin.module";
+import { IdempotencyModule } from "./common/idempotency/idempotency.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
 import { REDIS } from "./redis/redis.constants";
@@ -36,6 +37,7 @@ import { RedisModule } from "./redis/redis.module";
     ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),
     PrismaModule,
     RedisModule,
+    IdempotencyModule,
     QueueModule,
     // Rate limits are counted in Redis so they hold across multiple API instances.
     ThrottlerModule.forRootAsync({

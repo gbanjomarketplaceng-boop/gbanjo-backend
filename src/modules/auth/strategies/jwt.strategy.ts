@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import type { Env } from "../../../config/env.validation";
+import { SessionCacheService } from "../../../common/cache/session-cache.service";
 import { PrismaService } from "../../../prisma/prisma.service";
 import type { AuthUser, JwtPayload } from "../types/auth-user";
 
@@ -15,6 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     config: ConfigService<Env, true>,
     private readonly prisma: PrismaService,
+    private readonly sessions: SessionCacheService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -26,12 +28,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthUser> {
-    const session = await this.prisma.session.findUnique({
-      where: { id: payload.sid },
-      select: { userId: true, revokedAt: true, expiresAt: true, user: { select: { status: true, role: true } } },
-    });
-    if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt < new Date() || session.user.status !== "ACTIVE")
-      throw new UnauthorizedException();
-    return { id: payload.sub, role: session.user.role, sessionId: payload.sid };
+    let s = await this.sessions.get(payload.sid, payload.sub);
+    if (!s) {
+      const row = await this.prisma.session.findUnique({
+        where: { id: payload.sid },
+        select: { userId: true, revokedAt: true, expiresAt: true, user: { select: { status: true, role: true } } },
+      });
+      if (!row) throw new UnauthorizedException();
+      s = { userId: row.userId, role: row.user.role, status: row.user.status, revoked: !!row.revokedAt, expiresAt: row.expiresAt.getTime() };
+      await this.sessions.set(payload.sid, s);
+    }
+    if (s.userId !== payload.sub || s.revoked || s.expiresAt < Date.now() || s.status !== "ACTIVE") throw new UnauthorizedException();
+    return { id: payload.sub, role: s.role, sessionId: payload.sid };
   }
 }

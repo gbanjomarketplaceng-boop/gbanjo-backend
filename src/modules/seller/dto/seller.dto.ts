@@ -20,16 +20,16 @@ export class SubmitVerificationDto {
   documentPublicId?: string;
 }
 
-export class VerificationDto {
+export class SellerVerificationDto {
   @ApiProperty({ enum: ["none", "pending", "verified", "rejected"] }) status!: "none" | "pending" | "verified" | "rejected";
   @ApiPropertyOptional({ enum: ID_TYPES }) idType?: string;
   @ApiPropertyOptional({ description: "Why it was rejected" }) note?: string;
   @ApiPropertyOptional() submittedAt?: Date;
 
-  static from(v: SellerVerification | null): VerificationDto {
+  static from(v: SellerVerification | null): SellerVerificationDto {
     if (!v) return { status: "none" };
     return {
-      status: v.status.toLowerCase() as VerificationDto["status"],
+      status: v.status.toLowerCase() as SellerVerificationDto["status"],
       idType: v.idType,
       ...(v.note ? { note: v.note } : {}),
       submittedAt: v.updatedAt,

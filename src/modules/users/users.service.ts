@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from "@nestjs/common";
 import * as argon2 from "argon2";
 import { AppException } from "../../common/exceptions/app.exception";
 import { normalizeNigerianPhone } from "../../common/utils/phone";
+import { SessionCacheService } from "../../common/cache/session-cache.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { UploadsService } from "../uploads/uploads.service";
 import { CompleteProfileDto } from "./dto/complete-profile.dto";
@@ -12,6 +13,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
+    private readonly sessionCache: SessionCacheService,
   ) {}
 
   findById(id: string) {
@@ -135,5 +137,6 @@ export class UsersService {
         },
       }),
     ]);
+    await this.sessionCache.dropUser(id);
   }
 }

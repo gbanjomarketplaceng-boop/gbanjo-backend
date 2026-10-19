@@ -70,6 +70,6 @@ export class UpdatePreferencesDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() analytics?: boolean;
 }
 
-export class UnreadDto {
+export class NotificationUnreadDto {
   @ApiProperty({ example: 2 }) unread!: number;
 }

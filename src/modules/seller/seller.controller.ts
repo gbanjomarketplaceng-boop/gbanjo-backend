@@ -2,8 +2,9 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post
 import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AdminGuard } from "../../common/guards/admin.guard";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
-import { AdminVerificationDto, ListingDto, ReviewVerificationDto, SaveListingDto, SubmitVerificationDto, VerificationDto } from "./dto/seller.dto";
+import { AdminVerificationDto, ListingDto, ReviewVerificationDto, SaveListingDto, SubmitVerificationDto, SellerVerificationDto } from "./dto/seller.dto";
 import { SellerService } from "./seller.service";
 
 @ApiTags("Selling")
@@ -14,14 +15,15 @@ export class SellerController {
 
   @Get("seller/verification")
   @ApiOperation({ summary: "My seller verification status (none | pending | verified | rejected)" })
-  @ApiOkResponse({ type: VerificationDto })
+  @ApiOkResponse({ type: SellerVerificationDto })
   verification(@CurrentUser() user: AuthUser) {
     return this.seller.verification(user.id);
   }
 
   @Post("seller/verification")
+  @Idempotent()
   @ApiOperation({ summary: "Send my ID for review (upload it first with purpose id_document). Selling unlocks right away." })
-  @ApiCreatedResponse({ type: VerificationDto })
+  @ApiCreatedResponse({ type: SellerVerificationDto })
   submit(@CurrentUser() user: AuthUser, @Body() dto: SubmitVerificationDto) {
     return this.seller.submitVerification(user.id, dto);
   }
@@ -41,6 +43,7 @@ export class SellerController {
   }
 
   @Post("seller/listings")
+  @Idempotent()
   @ApiOperation({ summary: "Create a listing: status draft (default) or active (publish now)" })
   @ApiCreatedResponse({ type: ListingDto })
   create(@CurrentUser() user: AuthUser, @Body() dto: SaveListingDto) {
@@ -74,7 +77,7 @@ export class SellerController {
   @UseGuards(AdminGuard)
   @Patch("admin/seller-verifications/:id")
   @ApiOperation({ summary: "Admin: approve or reject a seller's ID" })
-  @ApiOkResponse({ type: VerificationDto })
+  @ApiOkResponse({ type: SellerVerificationDto })
   review(@Param("id") id: string, @Body() dto: ReviewVerificationDto) {
     return this.seller.reviewVerification(id, dto);
   }

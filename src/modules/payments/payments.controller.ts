@@ -2,6 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, Quer
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import { Public } from "../../common/decorators/public.decorator";
 import type { AuthUser } from "../auth/types/auth-user";
 import { PaymentDto, TopUpDto, VerifyPaymentDto } from "./dto/payments.dto";
@@ -22,6 +23,7 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @Post("top-up")
+  @Idempotent()
   @ApiBearerAuth()
   @ApiOperation({ summary: "Start a wallet top-up — open the returned checkoutUrl (Flutterwave) to pay" })
   @ApiOkResponse({ type: PaymentDto })

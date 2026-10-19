@@ -4,6 +4,7 @@ import { Throttle } from "@nestjs/throttler";
 import { Client, type ClientInfo } from "../../common/decorators/client-info.decorator";
 import { Public } from "../../common/decorators/public.decorator";
 import { AdminGuard } from "../../common/guards/admin.guard";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import { ContactService } from "./contact.service";
 import { ContactMessageDto, ContactReceiptDto, CreateContactMessageDto, UpdateContactStatusDto } from "./dto/contact.dto";
 
@@ -15,6 +16,7 @@ export class ContactController {
   @Public()
   @Throttle({ default: { limit: 5, ttl: 10 * 60_000 } })
   @Post("contact")
+  @Idempotent()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: "Send a message from the Contact page (emailed to support; the sender gets a confirmation)" })
   @ApiOkResponse({ type: ContactReceiptDto })

@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Redis from "ioredis";
 import { AppException } from "../../../common/exceptions/app.exception";
-import { randomDigits, safeEqualHex, sha256 } from "../../../common/utils/crypto";
+import { randomDigits, sha256 } from "../../../common/utils/crypto";
 import type { Env } from "../../../config/env.validation";
 import { REDIS } from "../../../redis/redis.constants";
 import type { OtpPurpose } from "../../notifications/notifications.constants";
@@ -23,6 +23,28 @@ export interface IssuedOtp {
  * One-time codes kept in Redis (never in Postgres). Only a keyed hash of the code is stored.
  * Enforces a resend cooldown, an hourly send cap and a wrong-attempt limit per code.
  */
+/**
+ * KEYS[1] = code record, KEYS[2] = resend cooldown; ARGV[1] = hash of the code entered, ARGV[2] = max attempts.
+ * Hashes are fixed-length hex, so comparing them in Lua leaks nothing useful about the code.
+ */
+const VERIFY_SCRIPT = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return {"expired", 0} end
+local rec = cjson.decode(raw)
+if rec.hash == ARGV[1] then
+  redis.call("DEL", KEYS[1], KEYS[2])
+  return {"ok", 0}
+end
+rec.attempts = (rec.attempts or 0) + 1
+local max = tonumber(ARGV[2])
+if rec.attempts >= max then
+  redis.call("DEL", KEYS[1], KEYS[2])
+  return {"locked", 0}
+end
+redis.call("SET", KEYS[1], cjson.encode(rec), "KEEPTTL")
+return {"wrong", max - rec.attempts}
+`;
+
 @Injectable()
 export class OtpService {
   private readonly length: number;
@@ -92,25 +114,17 @@ export class OtpService {
     return { code, codeLength: this.length, expiresIn: this.ttl, resendIn: this.cooldown };
   }
 
-  /** Checks and consumes a code. Throws CODE_EXPIRED, INVALID_CODE (with attemptsRemaining) or TOO_MANY_ATTEMPTS. */
+  /**
+   * Checks and consumes a code. Throws CODE_EXPIRED, INVALID_CODE (with attemptsRemaining) or TOO_MANY_ATTEMPTS.
+   * Runs as one Redis script so parallel guesses can't get extra attempts and a right code can only be used once.
+   */
   async verify(purpose: OtpPurpose, subject: string, code: string): Promise<void> {
     const k = this.keys(purpose, subject);
-    const raw = await this.redis.get(k.code);
-    if (!raw) throw new AppException(HttpStatus.BAD_REQUEST, "CODE_EXPIRED", "This code has expired. Request a new one.");
-
-    const record = JSON.parse(raw) as OtpRecord;
-    if (safeEqualHex(record.hash, this.hash(subject, code))) {
-      await this.redis.del(k.code, k.cooldown);
-      return;
-    }
-
-    record.attempts += 1;
-    if (record.attempts >= this.maxAttempts) {
-      await this.redis.del(k.code, k.cooldown);
-      throw new AppException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_ATTEMPTS", "Too many wrong codes. Request a new code.");
-    }
-    await this.redis.set(k.code, JSON.stringify(record), "KEEPTTL");
-    const attemptsRemaining = this.maxAttempts - record.attempts;
-    throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_CODE", "That code isn't right. Check it and try again.", { attemptsRemaining });
+    const result = (await this.redis.eval(VERIFY_SCRIPT, 2, k.code, k.cooldown, this.hash(subject, code), String(this.maxAttempts))) as [string, number];
+    const [outcome, left] = result;
+    if (outcome === "ok") return;
+    if (outcome === "expired") throw new AppException(HttpStatus.BAD_REQUEST, "CODE_EXPIRED", "This code has expired. Request a new one.");
+    if (outcome === "locked") throw new AppException(HttpStatus.TOO_MANY_REQUESTS, "TOO_MANY_ATTEMPTS", "Too many wrong codes. Request a new code.");
+    throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_CODE", "That code isn't right. Check it and try again.", { attemptsRemaining: Number(left) });
   }
 }

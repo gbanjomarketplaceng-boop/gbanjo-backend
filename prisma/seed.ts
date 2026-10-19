@@ -16,6 +16,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { pgConnectionString } from "../src/prisma/database-url";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { imageResolver } from "./seed-images";
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: pgConnectionString(process.env.DATABASE_URL!) }) });
 
@@ -96,6 +97,7 @@ const products: Seed[] = [
   { slug: "sky-blue-court-sneakers", name: "Sky-blue court sneakers", imageUrl: "/images/sim-4.png", price: 32000, category: "clothing", tags: "Clothing · Footwear", rating: 4, reviewCount: 12 },
 ];
 
+const images = imageResolver();
 const PRODUCTS_ONLY = process.argv.includes("--products-only");
 const BANNERS_ONLY = process.argv.includes("--banners-only");
 
@@ -110,42 +112,52 @@ const banners = [
 
 /** Adds any of the slides above that aren't there yet (matched by title), so admin edits are never overwritten. */
 async function seedBanners() {
-  const existing = new Set((await prisma.banner.findMany({ select: { title: true } })).map((b) => b.title));
+  const existing = new Map((await prisma.banner.findMany({ select: { id: true, title: true, imageUrl: true } })).map((b) => [b.title, b]));
   let added = 0;
   for (const [i, b] of banners.entries()) {
-    if (existing.has(b.title)) continue;
-    await prisma.banner.create({ data: { ...b, sortOrder: i } });
+    const imageUrl = await images.resolve(b.imageUrl);
+    const current = existing.get(b.title);
+    if (current) {
+      // Only swap a still-local picture for its Cloudinary copy; anything an admin changed is left alone.
+      if (current.imageUrl === b.imageUrl && imageUrl !== b.imageUrl) await prisma.banner.update({ where: { id: current.id }, data: { imageUrl } });
+      continue;
+    }
+    await prisma.banner.create({ data: { ...b, imageUrl, sortOrder: i } });
     added++;
   }
   return added;
 }
 
+const uploadedNote = () => (images.enabled ? ` Pictures are on Cloudinary (${images.count()} uploaded or reused).` : "");
+
 async function main() {
   if (BANNERS_ONLY) {
-    console.log(`Added ${await seedBanners()} banners (existing ones were left as they are).`);
+    console.log(`Added ${await seedBanners()} banners (existing ones were left as they are).${uploadedNote()}`);
     return;
   }
 
   const now = Date.now();
   const ids = new Map<string, string>();
-  for (const [i, c] of categories.entries()) {
+  for (const [i, c0] of categories.entries()) {
+    const c = { ...c0, imageUrl: await images.resolve(c0.imageUrl) };
     const row = PRODUCTS_ONLY
-      ? // Keep categories exactly as they are; only create one that's missing.
+      ? // Keep categories as they are; only create a missing one (or swap a still-local picture for its Cloudinary copy).
         await prisma.category.upsert({ where: { slug: c.slug }, create: { ...c, sortOrder: i }, update: {} })
       : await prisma.category.upsert({ where: { slug: c.slug }, create: { ...c, sortOrder: i }, update: { ...c, sortOrder: i } });
+    if (PRODUCTS_ONLY && row.imageUrl === c0.imageUrl && c.imageUrl !== c0.imageUrl) await prisma.category.update({ where: { id: row.id }, data: { imageUrl: c.imageUrl } });
     ids.set(c.slug, row.id);
   }
 
   for (const [i, p] of products.entries()) {
     const data = {
       name: p.name,
-      imageUrl: p.imageUrl,
+      imageUrl: await images.resolve(p.imageUrl),
       price: p.price,
       oldPrice: p.kind === "flash" ? p.oldPrice : null,
       categoryId: ids.get(p.category)!,
       tags: p.tags,
       location: LAGOS,
-      gallery: p.gallery ?? [],
+      gallery: await Promise.all((p.gallery ?? []).map((g) => images.resolve(g))),
       variations: p.variations ?? [],
       condition: p.condition ?? null,
       status: "ACTIVE" as const,
@@ -163,13 +175,13 @@ async function main() {
     });
   }
   if (PRODUCTS_ONLY) {
-    console.log(`Uploaded ${products.length} products.`);
+    console.log(`Uploaded ${products.length} products.${uploadedNote()}`);
     return;
   }
 
   await seedBanners();
 
-  console.log(`Seeded ${categories.length} categories, ${products.length} products and the home banners.`);
+  console.log(`Seeded ${categories.length} categories, ${products.length} products and the home banners.${uploadedNote()}`);
 }
 
 main()

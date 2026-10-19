@@ -1,9 +1,10 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import { AdminGuard } from "../../common/guards/admin.guard";
 import type { AuthUser } from "../auth/types/auth-user";
-import { AdminListOrdersQuery, CheckoutDto, CheckoutResultDto, CheckVoucherDto, ListOrdersQuery, OrderDto, VoucherDto } from "./dto/orders.dto";
+import { AdminListOrdersQuery, AdvanceOrderDto, CheckoutDto, CheckoutResultDto, CheckVoucherDto, ListOrdersQuery, OrderDto, VoucherDto } from "./dto/orders.dto";
 import { OrdersService } from "./orders.service";
 
 @ApiTags("Orders")
@@ -13,6 +14,7 @@ export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
   @Post("orders/checkout")
+  @Idempotent()
   @ApiOperation({
     summary: "Buy your cart (or the items given). Wallet pays at once; for card/bank transfer/USSD open payment.checkoutUrl (Flutterwave).",
   })
@@ -39,14 +41,16 @@ export class OrdersController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Seller: move the order to the next stage (Packed → Shipped → Out for delivery → Delivered)" })
   @ApiOkResponse({ type: OrderDto })
-  advance(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.orders.advance(user, id);
+  @Idempotent()
+  advance(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body() dto: AdvanceOrderDto) {
+    return this.orders.advance(user, id, dto.fromStage);
   }
 
   @Post("orders/:id/cancel")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Cancel before it ships (buyer or seller). The money goes back to the wallet or card it came from." })
   @ApiOkResponse({ type: OrderDto })
+  @Idempotent()
   cancel(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.orders.cancel(user, id);
   }

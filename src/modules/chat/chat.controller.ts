@@ -2,10 +2,11 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Sse } 
 import { ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiProduces, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
 import { ChatEventsService } from "./chat-events.service";
 import { ChatService } from "./chat.service";
-import { ChatMessageDto, ConversationDto, MessagePageDto, MessagesQuery, SendMessageDto, StartConversationDto, UnreadDto } from "./dto/chat.dto";
+import { ChatMessageDto, ConversationDto, MessagePageDto, MessagesQuery, SendMessageDto, StartConversationDto, ChatUnreadDto } from "./dto/chat.dto";
 
 @ApiTags("Chat")
 @Controller({ path: "chat", version: "1" })
@@ -38,12 +39,13 @@ export class ChatController {
 
   @Get("unread")
   @ApiOperation({ summary: "Total unread messages (for a badge)" })
-  @ApiOkResponse({ type: UnreadDto })
+  @ApiOkResponse({ type: ChatUnreadDto })
   unread(@CurrentUser() user: AuthUser) {
     return this.chat.unreadTotal(user.id);
   }
 
   @Post("conversations")
+  @Idempotent()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: "Message the seller of a listing (opens the existing conversation if there is one)" })
@@ -67,6 +69,7 @@ export class ChatController {
   }
 
   @Post("conversations/:id/messages")
+  @Idempotent()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: "Send a message (delivered live to both people)" })
   @ApiOkResponse({ type: ChatMessageDto })

@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { CacheFor } from "../../common/cache/response-cache.interceptor";
 import { Public } from "../../common/decorators/public.decorator";
 import { CatalogService } from "./catalog.service";
 import { CategoryDto, FlashSaleDto, HomeDto, ProductDto, ProductPageDto, SuggestionsDto } from "./dto/catalog.dto";
@@ -8,6 +9,7 @@ import { JustForYouQuery, LimitQuery, ListProductsQuery, SuggestQuery } from "./
 /** Public storefront endpoints — no sign-in needed. */
 @ApiTags("Catalog")
 @Public()
+@CacheFor(30)
 @Controller({ version: "1" })
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}

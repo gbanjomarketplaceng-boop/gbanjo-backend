@@ -42,7 +42,7 @@ import {
   OAuthResultDto,
   RegisterResponseDto,
   ResetTokenResponseDto,
-  VerificationDto,
+  SignupCodeDto,
 } from "./dto/responses.dto";
 import type { AuthUser } from "./types/auth-user";
 
@@ -81,7 +81,7 @@ export class AuthController {
   @Post("resend-otp")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Send a new sign-up code" })
-  @ApiOkResponse({ type: VerificationDto })
+  @ApiOkResponse({ type: SignupCodeDto })
   @ApiTooManyRequestsResponse({ description: "OTP_COOLDOWN or OTP_LIMIT_REACHED" })
   resendOtp(@Body() dto: ResendOtpDto) {
     return this.auth.resendSignupCode(dto.phone);

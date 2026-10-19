@@ -84,7 +84,7 @@ export class MessagePageDto {
   @ApiProperty({ description: "There are older messages (pass before=<items[0].createdAt>)" }) hasMore!: boolean;
 }
 
-export class UnreadDto {
+export class ChatUnreadDto {
   @ApiProperty() unread!: number;
 }
 

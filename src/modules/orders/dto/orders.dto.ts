@@ -183,3 +183,12 @@ export class CheckoutResultDto {
   @ApiProperty({ type: PaymentDto, description: "Card payments: open payment.checkoutUrl. Wallet payments are already successful." }) payment!: PaymentDto;
   @ApiProperty({ type: [OrderDto], description: "One order per seller" }) orders!: OrderDto[];
 }
+
+export class AdvanceOrderDto {
+  @ApiPropertyOptional({ description: "The stage you saw (0–4). If the order has moved on since, nothing changes and you get 409 ORDER_CHANGED — so a double-click can't skip a stage.", minimum: 0, maximum: 4 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(4)
+  fromStage?: number;
+}

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { UserResponseDto } from "../../users/dto/user-response.dto";
 
-export class VerificationDto {
+export class SignupCodeDto {
   @ApiProperty({ enum: ["sms", "email"] }) channel!: "sms" | "email";
   @ApiProperty({ example: "+234*******56", description: "Masked phone/email the code went to" }) destination!: string;
   @ApiProperty({ example: 4 }) codeLength!: number;
@@ -11,7 +11,7 @@ export class VerificationDto {
 
 export class RegisterResponseDto {
   @ApiProperty({ example: "We sent a 4-digit code to +234*******56." }) message!: string;
-  @ApiProperty({ type: VerificationDto }) verification!: VerificationDto;
+  @ApiProperty({ type: SignupCodeDto }) verification!: SignupCodeDto;
 }
 
 export class AuthTokensDto {

@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { randomInt } from "node:crypto";
 import type { Order, OrderItem, OrderStatus, Payment, Prisma } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
+import { LocksService } from "../../common/idempotency/locks.service";
 import { normalizeNigerianPhone } from "../../common/utils/phone";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -61,6 +62,7 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<Env, true>,
     private readonly inbox: InboxService,
+    private readonly locks: LocksService,
   ) {
     payments.onPaid(
       "ORDER",
@@ -71,7 +73,15 @@ export class OrdersService {
 
   // ---------- Checkout ----------
 
-  async checkout(userId: string, dto: CheckoutDto): Promise<CheckoutResultDto> {
+  /** One checkout per person at a time (a double-tap on "Pay" can't create two sets of orders). */
+  checkout(userId: string, dto: CheckoutDto): Promise<CheckoutResultDto> {
+    return this.locks.withLock(`checkout:${userId}`, () => this.doCheckout(userId, dto), {
+      busyCode: "CHECKOUT_IN_PROGRESS",
+      busyMessage: "Your last checkout is still going through. Please wait a moment.",
+    });
+  }
+
+  private async doCheckout(userId: string, dto: CheckoutDto): Promise<CheckoutResultDto> {
     const byWallet = dto.paymentMethod === "wallet";
     const returnUrl = byWallet ? undefined : this.payments.checkReturnUrl(dto.returnUrl);
     const provider = byWallet ? null : this.payments.cardProvider();
@@ -290,8 +300,10 @@ export class OrdersService {
   // ---------- Changes ----------
 
   /** Seller (or an admin): move the order to the next shipment stage. Delivered completes it and starts the seller's payout hold. */
-  async advance(user: Pick<AuthUser, "id" | "role">, id: string): Promise<OrderDto> {
+  async advance(user: Pick<AuthUser, "id" | "role">, id: string, fromStage?: number): Promise<OrderDto> {
     const o = await this.find(user, id);
+    if (fromStage !== undefined && fromStage !== o.stage)
+      throw new AppException(HttpStatus.CONFLICT, "ORDER_CHANGED", "This order was just updated. Refresh and try again.");
     if (!this.canAdvance(o, user))
       throw new AppException(HttpStatus.FORBIDDEN, "CANT_UPDATE_ORDER", o.status === "ONGOING" ? "Only the seller can update this order." : "This order can't be updated any more.");
     const stage = o.stage + 1;
@@ -346,9 +358,10 @@ export class OrdersService {
     if (!canceled) throw new AppException(HttpStatus.CONFLICT, "ORDER_CHANGED", "This order was just updated. Refresh and try again.");
 
     if (!byWallet) {
-      const toCard = await this.payments.refundToCard(payment, total);
-      if (!toCard) await this.prisma.$transaction((tx) => this.refundToWallet(tx, o, total));
-      await this.prisma.order.update({ where: { id }, data: { refundTo: toCard ? "card" : "wallet" } });
+      const result = await this.payments.refundToCard(payment, total);
+      // Only fall back to the wallet when Flutterwave clearly refused; an unclear answer may still be refunded to the card.
+      if (result === "rejected") await this.prisma.$transaction((tx) => this.refundToWallet(tx, o, total));
+      await this.prisma.order.update({ where: { id }, data: { refundTo: result === "rejected" ? "wallet" : "card" } });
     }
     const fresh = await this.find(user, id);
     void this.notifyCanceled(fresh);

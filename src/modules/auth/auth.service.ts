@@ -29,7 +29,7 @@ import type {
   OAuthResultDto,
   RegisterResponseDto,
   ResetTokenResponseDto,
-  VerificationDto,
+  SignupCodeDto,
 } from "./dto/responses.dto";
 import { LoginAttemptsService } from "./services/login-attempts.service";
 import { OAuthVerifierService, type OAuthIdentity, type OAuthProviderName } from "./services/oauth-verifier.service";
@@ -95,7 +95,7 @@ export class AuthService {
     };
   }
 
-  async resendSignupCode(phoneInput: string): Promise<VerificationDto> {
+  async resendSignupCode(phoneInput: string): Promise<SignupCodeDto> {
     const user = await this.users.findByPhone(phoneOrThrow(phoneInput));
     if (!user) throw new AppException(HttpStatus.NOT_FOUND, "ACCOUNT_NOT_FOUND", "We couldn't find a sign-up for that number. Start again.");
     if (user.phoneVerifiedAt) throw new AppException(HttpStatus.CONFLICT, "ALREADY_VERIFIED", "This number is already verified. Log in instead.");
@@ -310,7 +310,7 @@ export class AuthService {
   // ---------- helpers ----------
 
   /** Sends the same sign-up code by SMS and by email. */
-  private async sendSignupCode(user: User & { phone: string | null }): Promise<VerificationDto> {
+  private async sendSignupCode(user: User & { phone: string | null }): Promise<SignupCodeDto> {
     if (!user.phone) throw new AppException(HttpStatus.BAD_REQUEST, "PHONE_REQUIRED", "Add a phone number first.");
     const issued = await this.otp.issue("signup", user.id);
     const job = { code: issued.code, purpose: "signup" as const, firstName: user.firstName, expiresInMinutes: Math.round(issued.expiresIn / 60) };

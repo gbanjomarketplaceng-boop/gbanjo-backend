@@ -5,7 +5,7 @@ import type { Prisma } from "../../generated/prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InboxService } from "../inbox/inbox.service";
 import { UploadsService } from "../uploads/uploads.service";
-import { ListingDto, type ReviewVerificationDto, type SaveListingDto, type SubmitVerificationDto, VerificationDto } from "./dto/seller.dto";
+import { ListingDto, type ReviewVerificationDto, type SaveListingDto, type SubmitVerificationDto, SellerVerificationDto } from "./dto/seller.dto";
 import { MAX_LISTINGS } from "./seller.constants";
 
 const STATUS = { draft: "DRAFT", active: "ACTIVE", sold: "SOLD" } as const;
@@ -40,11 +40,11 @@ export class SellerService {
 
   // ---------- Verification ----------
 
-  async verification(userId: string): Promise<VerificationDto> {
-    return VerificationDto.from(await this.prisma.sellerVerification.findUnique({ where: { userId } }));
+  async verification(userId: string): Promise<SellerVerificationDto> {
+    return SellerVerificationDto.from(await this.prisma.sellerVerification.findUnique({ where: { userId } }));
   }
 
-  async submitVerification(userId: string, dto: SubmitVerificationDto): Promise<VerificationDto> {
+  async submitVerification(userId: string, dto: SubmitVerificationDto): Promise<SellerVerificationDto> {
     const current = await this.prisma.sellerVerification.findUnique({ where: { userId } });
     if (current?.status === "VERIFIED") throw new AppException(HttpStatus.CONFLICT, "ALREADY_VERIFIED", "Your seller account is already verified.");
     const doc = dto.documentPublicId?.trim();
@@ -53,7 +53,7 @@ export class SellerService {
       throw new AppException(HttpStatus.FORBIDDEN, "NOT_YOUR_UPLOAD", "That photo doesn't belong to your account.");
     const data = { idType: dto.idType, documentPublicId: doc || null, status: "PENDING" as const, note: null, reviewedAt: null };
     const v = await this.prisma.sellerVerification.upsert({ where: { userId }, create: { userId, ...data }, update: data });
-    return VerificationDto.from(v);
+    return SellerVerificationDto.from(v);
   }
 
   async listVerifications(status?: "PENDING" | "VERIFIED" | "REJECTED") {
@@ -86,7 +86,7 @@ export class SellerService {
         ? { type: "seller", title: "You're verified to sell", body: "Your ID was approved. Your listings now show the ID Verified badge.", href: "/sell" }
         : { type: "seller", title: "We couldn't verify your ID", body: v.note ? `Reason: ${v.note}. Please submit it again.` : "Please submit your ID again.", href: "/sell/verify" },
     );
-    return VerificationDto.from(v);
+    return SellerVerificationDto.from(v);
   }
 
   /** Sellers can list once they've sent their ID (while it's being reviewed too), but not after a rejection. */

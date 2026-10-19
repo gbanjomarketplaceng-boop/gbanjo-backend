@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put } from "@nestjs/common";
 import { ApiBearerAuth, ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
 import { BlockedUserDto, CreateReportDto, ReportCreatedDto } from "./dto/safety.dto";
 import { SafetyService } from "./safety.service";
@@ -12,6 +13,7 @@ export class SafetyController {
   constructor(private readonly safety: SafetyService) {}
 
   @Post("reports")
+  @Idempotent()
   @ApiOperation({ summary: "Report a listing or a person to the Gbanjo team" })
   @ApiCreatedResponse({ type: ReportCreatedDto })
   report(@CurrentUser() user: AuthUser, @Body() dto: CreateReportDto) {

@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Idempotent } from "../../common/idempotency/idempotency.interceptor";
 import type { AuthUser } from "../auth/types/auth-user";
 import { AddressesService } from "./addresses.service";
 import { AddressDto, CreateAddressDto, UpdateAddressDto } from "./dto/address.dto";
@@ -20,6 +21,7 @@ export class AddressesController {
   }
 
   @Post()
+  @Idempotent()
   @ApiOperation({ summary: "Add an address (the first one becomes the default)" })
   @ApiOkResponse({ type: [AddressDto] })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAddressDto) {

@@ -75,9 +75,25 @@ export class ChatService {
       orderBy: { lastMessageAt: "desc" },
       take: 100,
     });
-    const unread = await Promise.all(rows.map((c) => this.prisma.chatMessage.count({ where: this.unreadWhere(userId, c) })));
-    const blocks = await this.prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } });
-    return rows.map((c, i) => this.view(userId, c, unread[i], blocks));
+    const [unread, blocks] = await Promise.all([
+      this.unreadCounts(userId, rows.map((c) => c.id)),
+      this.prisma.block.findMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] }, select: { blockerId: true, blockedId: true } }),
+    ]);
+    return rows.map((c) => this.view(userId, c, unread.get(c.id) ?? 0, blocks));
+  }
+
+  /** Unread messages per conversation in one query (instead of one count per conversation). */
+  private async unreadCounts(userId: string, ids: string[]): Promise<Map<string, number>> {
+    if (!ids.length) return new Map();
+    const rows = await this.prisma.$queryRaw<{ id: string; n: bigint }[]>`
+      SELECT m.conversation_id AS id, COUNT(*) AS n
+      FROM chat_messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE m.conversation_id = ANY(${ids}::text[])
+        AND m.sender_id <> ${userId}
+        AND m.created_at > COALESCE(CASE WHEN c.buyer_id = ${userId} THEN c.buyer_last_read_at ELSE c.seller_last_read_at END, '-infinity'::timestamp)
+      GROUP BY m.conversation_id`;
+    return new Map(rows.map((r) => [r.id, Number(r.n)]));
   }
 
   async get(userId: string, id: string): Promise<ConversationDto> {
@@ -86,9 +102,16 @@ export class ChatService {
     return this.view(userId, c, await this.prisma.chatMessage.count({ where: this.unreadWhere(userId, c) }), blocks);
   }
 
+  /** Polled often by the apps, so it's one cheap query rather than the whole conversation list. */
   async unreadTotal(userId: string): Promise<{ unread: number }> {
-    const list = await this.list(userId);
-    return { unread: list.reduce((n, c) => n + c.unread, 0) };
+    const [row] = await this.prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT COUNT(*) AS n
+      FROM chat_messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE (c.buyer_id = ${userId} OR c.seller_id = ${userId})
+        AND m.sender_id <> ${userId}
+        AND m.created_at > COALESCE(CASE WHEN c.buyer_id = ${userId} THEN c.buyer_last_read_at ELSE c.seller_last_read_at END, '-infinity'::timestamp)`;
+    return { unread: Number(row?.n ?? 0) };
   }
 
   private async own(userId: string, id: string): Promise<Row> {
