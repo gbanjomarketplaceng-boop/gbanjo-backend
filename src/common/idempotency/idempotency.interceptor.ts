@@ -1,11 +1,10 @@
-import { CallHandler, ExecutionContext, HttpStatus, Inject, Injectable, NestInterceptor, SetMetadata } from "@nestjs/common";
+import { CallHandler, ExecutionContext, HttpStatus, Injectable, NestInterceptor, SetMetadata } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request, Response } from "express";
-import type Redis from "ioredis";
 import { createHash } from "node:crypto";
 import { from, Observable, of, switchMap } from "rxjs";
 import { AppException } from "../exceptions/app.exception";
-import { REDIS } from "../../redis/redis.constants";
+import { KvService } from "../../redis/kv.service";
 
 export const IDEMPOTENT = "idempotent";
 /**
@@ -25,7 +24,7 @@ type Saved = { state: "running"; fp: string } | { state: "done"; fp: string; sta
 export class IdempotencyInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly kv: KvService,
   ) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -53,7 +52,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
         return next.handle().pipe(
           switchMap(async (body) => {
-            await this.redis.set(key, JSON.stringify({ state: "done", fp, status: res.statusCode, body } satisfies Saved), "EX", DONE_TTL);
+            await this.kv.set(key, JSON.stringify({ state: "done", fp, status: res.statusCode, body } satisfies Saved), DONE_TTL);
             return body;
           }),
           // Failed requests may be retried with the same key.
@@ -63,7 +62,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
                 next: (v) => sub.next(v),
                 complete: () => sub.complete(),
                 error: (e) => {
-                  void this.redis.del(key).catch(() => undefined);
+                  void this.kv.del(key).catch(() => undefined);
                   sub.error(e);
                 },
               }),
@@ -75,9 +74,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   /** Returns null when we got the key (first request); otherwise what's saved under it. */
   private async claim(key: string, fp: string): Promise<Saved | null> {
-    const ok = await this.redis.set(key, JSON.stringify({ state: "running", fp } satisfies Saved), "EX", RUNNING_TTL, "NX");
-    if (ok === "OK") return null;
-    const raw = await this.redis.get(key);
+    const ok = await this.kv.setIfAbsent(key, JSON.stringify({ state: "running", fp } satisfies Saved), RUNNING_TTL * 1000);
+    if (ok) return null;
+    const raw = await this.kv.get(key);
     if (!raw) return this.claim(key, fp);
     return JSON.parse(raw) as Saved;
   }

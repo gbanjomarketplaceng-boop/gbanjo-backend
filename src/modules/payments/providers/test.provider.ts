@@ -1,4 +1,4 @@
-import type Redis from "ioredis";
+import type { KvService } from "../../../redis/kv.service";
 import type { Bank, InitializePayment, PaymentProvider, TransferRequest, TransferResult, VerifiedPayment } from "./payment-provider";
 
 const TEST_BANKS: Bank[] = [
@@ -21,18 +21,18 @@ export class TestPaymentProvider implements PaymentProvider {
   readonly name = "test";
 
   constructor(
-    private readonly redis: Redis,
+    private readonly kv: KvService,
     private readonly apiBase: string,
   ) {}
 
   async initialize(p: InitializePayment) {
-    await this.redis.set(key(p.reference), JSON.stringify({ amount: p.amount, currency: p.currency, redirectUrl: p.redirectUrl, status: "pending" }), "EX", 86_400);
+    await this.kv.set(key(p.reference), JSON.stringify({ amount: p.amount, currency: p.currency, redirectUrl: p.redirectUrl, status: "pending" }), 86_400);
     return { checkoutUrl: `${this.apiBase}/payments/test-checkout/${encodeURIComponent(p.reference)}` };
   }
 
   /** What the test checkout page knows about a payment (null when unknown). */
   async session(reference: string): Promise<{ amount: number; currency: string; redirectUrl: string; status: string } | null> {
-    const raw = await this.redis.get(key(reference));
+    const raw = await this.kv.get(key(reference));
     return raw ? JSON.parse(raw) : null;
   }
 
@@ -40,7 +40,7 @@ export class TestPaymentProvider implements PaymentProvider {
   async complete(reference: string, status: "successful" | "failed" | "cancelled") {
     const s = await this.session(reference);
     if (!s) return null;
-    await this.redis.set(key(reference), JSON.stringify({ ...s, status }), "EX", 86_400);
+    await this.kv.set(key(reference), JSON.stringify({ ...s, status }), 86_400);
     return { ...s, status, transactionId: `test-${reference}` };
   }
 

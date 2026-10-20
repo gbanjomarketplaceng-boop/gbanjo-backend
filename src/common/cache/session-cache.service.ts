@@ -1,6 +1,5 @@
-import { Inject, Injectable } from "@nestjs/common";
-import type Redis from "ioredis";
-import { REDIS } from "../../redis/redis.constants";
+import { Injectable } from "@nestjs/common";
+import { KvService } from "../../redis/kv.service";
 
 export interface CachedSession {
   userId: string;
@@ -20,12 +19,13 @@ const userKey = (userId: string) => `sess:uv:${userId}`;
  */
 @Injectable()
 export class SessionCacheService {
-  constructor(@Inject(REDIS) private readonly redis: Redis) {}
+  constructor(private readonly kv: KvService) {}
 
   async get(sid: string, userId: string): Promise<CachedSession | null> {
+    // While Redis is unavailable this returns null and the database is asked instead.
+    const [raw, version] = await this.kv.cacheMget(sessKey(sid), userKey(userId));
+    if (!raw) return null;
     try {
-      const [raw, version] = await this.redis.mget(sessKey(sid), userKey(userId));
-      if (!raw) return null;
       const entry = JSON.parse(raw) as CachedSession & { v: string };
       return entry.v === (version ?? "0") ? entry : null;
     } catch {
@@ -34,21 +34,19 @@ export class SessionCacheService {
   }
 
   async set(sid: string, s: CachedSession): Promise<void> {
-    try {
-      const version = (await this.redis.get(userKey(s.userId))) ?? "0";
-      await this.redis.set(sessKey(sid), JSON.stringify({ ...s, v: version }), "EX", TTL_SECONDS);
-    } catch {
-      /* cache is optional */
-    }
+    const version = (await this.kv.cacheGet(userKey(s.userId))) ?? "0";
+    await this.kv.cacheSet(sessKey(sid), JSON.stringify({ ...s, v: version }), TTL_SECONDS);
   }
 
   /** One session ended (logout, token reuse). */
   async dropSession(sid: string): Promise<void> {
-    await this.redis.del(sessKey(sid)).catch(() => undefined);
+    await this.kv.cacheDel(sessKey(sid));
   }
 
   /** Everything about this person changed (all sessions revoked, suspended, deleted, role changed). */
   async dropUser(userId: string): Promise<void> {
-    await this.redis.multi().incr(userKey(userId)).expire(userKey(userId), 30 * 86_400).exec().catch(() => undefined);
+    // If Redis is down this is skipped, but so is the cache: Redis is only tried again after the
+    // cached sessions (15 s) have expired, so nobody keeps a stale "still allowed" answer.
+    await this.kv.cacheBump(userKey(userId), 30 * 86_400);
   }
 }

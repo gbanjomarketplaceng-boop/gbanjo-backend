@@ -751,3 +751,14 @@ model AdminAuditLog {
   @@index([adminId, createdAt])
   @@map("admin_audit_logs")
 }
+
+/// Backup for short-lived Redis keys (locks, one-time codes, request keys, counters) used only while Redis
+/// is unavailable or over its limit. Rows expire like Redis keys and are cleaned up automatically.
+model KvEntry {
+  key       String   @id
+  value     String
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("kv_entries")
+}

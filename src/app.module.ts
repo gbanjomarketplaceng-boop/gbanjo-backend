@@ -1,4 +1,3 @@
-import { ThrottlerStorageRedisService } from "@nest-lab/throttler-storage-redis";
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
@@ -30,7 +29,9 @@ import { SettingsModule } from "./modules/settings/settings.module";
 import { IdempotencyModule } from "./common/idempotency/idempotency.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
+import { KvService } from "./redis/kv.service";
 import { REDIS } from "./redis/redis.constants";
+import { ResilientThrottlerStorage } from "./common/throttle/resilient-throttler.storage";
 import { RedisModule } from "./redis/redis.module";
 
 @Module({
@@ -41,12 +42,12 @@ import { RedisModule } from "./redis/redis.module";
     IdempotencyModule,
     QueueModule,
     SettingsModule,
-    // Rate limits are counted in Redis so they hold across multiple API instances.
+    // Rate limits are counted in Redis so they hold across multiple API instances (in memory while Redis is unavailable).
     ThrottlerModule.forRootAsync({
-      inject: [REDIS, ConfigService],
-      useFactory: (redis: Redis, config: ConfigService<Env, true>) => ({
+      inject: [REDIS, KvService, ConfigService],
+      useFactory: (redis: Redis, kv: KvService, config: ConfigService<Env, true>) => ({
         throttlers: [{ name: "default", ttl: 60_000, limit: 120 }],
-        storage: new ThrottlerStorageRedisService(redis),
+        storage: new ResilientThrottlerStorage(redis, kv),
         // The e2e suite fires many auth requests from one IP.
         skipIf: () => config.get("NODE_ENV", { infer: true }) === "test",
       }),

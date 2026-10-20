@@ -1,12 +1,11 @@
-import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
-import Redis from "ioredis";
+import { HttpStatus, Injectable, Logger } from "@nestjs/common";
 import type { ClientInfo } from "../../common/decorators/client-info.decorator";
 import { AppException } from "../../common/exceptions/app.exception";
 import { randomToken, sha256 } from "../../common/utils/crypto";
 import { maskEmail, maskPhone, normalizeNigerianPhone } from "../../common/utils/phone";
 import type { User } from "../../generated/prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
-import { REDIS } from "../../redis/redis.constants";
+import { KvService } from "../../redis/kv.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UserResponseDto } from "../users/dto/user-response.dto";
 import { UsersService } from "../users/users.service";
@@ -59,7 +58,7 @@ export class AuthService {
     private readonly loginAttempts: LoginAttemptsService,
     private readonly notifications: NotificationsService,
     private readonly oauth: OAuthVerifierService,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly kv: KvService,
   ) {}
 
   // ---------- Sign-up ----------
@@ -268,13 +267,13 @@ export class AuthService {
     await this.otp.verify("password_reset", user.id, dto.code);
 
     const resetToken = randomToken();
-    await this.redis.set(`pwreset:${sha256(resetToken)}`, user.id, "EX", RESET_TOKEN_TTL_SECONDS);
+    await this.kv.set(`pwreset:${sha256(resetToken)}`, user.id, RESET_TOKEN_TTL_SECONDS);
     return { resetToken, expiresIn: RESET_TOKEN_TTL_SECONDS };
   }
 
   /** Sets the new password and signs the user out everywhere. */
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
-    const userId = await this.redis.getdel(`pwreset:${sha256(dto.resetToken)}`);
+    const userId = await this.kv.getDel(`pwreset:${sha256(dto.resetToken)}`);
     if (!userId) throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_RESET_TOKEN", "This reset link has expired. Start again.");
 
     const user = await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: await this.passwords.hash(dto.password) } });

@@ -1,9 +1,8 @@
-import { CallHandler, ExecutionContext, Inject, Injectable, Logger, NestInterceptor, SetMetadata } from "@nestjs/common";
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor, SetMetadata } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request, Response } from "express";
-import type Redis from "ioredis";
 import { from, Observable, of, switchMap, tap } from "rxjs";
-import { REDIS } from "../../redis/redis.constants";
+import { KvService } from "../../redis/kv.service";
 
 export const CACHE_FOR = "cacheFor";
 /**
@@ -19,11 +18,9 @@ const BUSTING_PATHS = [/\/seller\//, /\/admin\//, /\/products\/[^/]+\/reviews/, 
 
 @Injectable()
 export class ResponseCacheInterceptor implements NestInterceptor {
-  private readonly logger = new Logger("ResponseCache");
-
   constructor(
     private readonly reflector: Reflector,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly kv: KvService,
   ) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -33,7 +30,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
 
     if (req.method !== "GET") {
       if (!BUSTING_PATHS.some((re) => re.test(req.path))) return next.handle();
-      return next.handle().pipe(tap(() => void this.redis.incr(VERSION_KEY).catch(() => undefined)));
+      return next.handle().pipe(tap(() => void this.kv.cacheBump(VERSION_KEY)));
     }
 
     const seconds = this.reflector.getAllAndOverride<number | undefined>(CACHE_FOR, [ctx.getHandler(), ctx.getClass()]);
@@ -49,22 +46,18 @@ export class ResponseCacheInterceptor implements NestInterceptor {
         res.setHeader("X-Cache", "MISS");
         return next.handle().pipe(
           tap((body) => {
-            if (key && res.statusCode === 200) void this.redis.set(key, JSON.stringify(body), "EX", seconds).catch(() => undefined);
+            if (key && res.statusCode === 200) void this.kv.cacheSet(key, JSON.stringify(body), seconds);
           }),
         );
       }),
     );
   }
 
-  /** Never lets a Redis hiccup break the page: on any error we just skip the cache. */
+  /** Never lets a Redis problem break the page: while Redis is unavailable the cache is simply skipped. */
   private async lookup(url: string): Promise<{ key: string | null; hit: string | null }> {
-    try {
-      const version = (await this.redis.get(VERSION_KEY)) ?? "0";
-      const key = `cache:storefront:${version}:${url}`;
-      return { key, hit: await this.redis.get(key) };
-    } catch (e) {
-      this.logger.warn(`skipping cache: ${(e as Error).message}`);
-      return { key: null, hit: null };
-    }
+    if (!this.kv.redisUp) return { key: null, hit: null };
+    const version = (await this.kv.cacheGet(VERSION_KEY)) ?? "0";
+    const key = `cache:storefront:${version}:${url}`;
+    return { key, hit: await this.kv.cacheGet(key) };
   }
 }

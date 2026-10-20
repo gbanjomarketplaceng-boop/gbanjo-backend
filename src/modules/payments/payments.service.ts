@@ -1,12 +1,11 @@
-import { HttpStatus, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import type Redis from "ioredis";
 import type { Payment, PaymentPurpose, Prisma } from "../../generated/prisma/client";
 import { AppException } from "../../common/exceptions/app.exception";
 import type { Env } from "../../config/env.validation";
 import { PrismaService } from "../../prisma/prisma.service";
-import { REDIS } from "../../redis/redis.constants";
+import { KvService } from "../../redis/kv.service";
 import { InboxService } from "../inbox/inbox.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { WalletService } from "../wallet/wallet.service";
@@ -54,7 +53,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly wallets: WalletService,
     private readonly notifications: NotificationsService,
-    @Inject(REDIS) redis: Redis,
+    kv: KvService,
     private readonly config: ConfigService<Env, true>,
     private readonly inbox: InboxService,
   ) {
@@ -63,7 +62,7 @@ export class PaymentsService implements OnModuleInit, OnModuleDestroy {
 
     const key = config.get("FLW_SECRET_KEY", { infer: true });
     if (key) this.flutterwave = new FlutterwaveProvider(key, config.get("FLW_BASE_URL", { infer: true }));
-    if (config.get("NODE_ENV", { infer: true }) !== "production") this.test = new TestPaymentProvider(redis, this.apiBase);
+    if (config.get("NODE_ENV", { infer: true }) !== "production") this.test = new TestPaymentProvider(kv, this.apiBase);
     this.webhookHash = config.get("FLW_SECRET_HASH", { infer: true });
 
     this.allowedOrigins = new Set(

@@ -229,8 +229,11 @@ export class OrdersService {
       throw new AppException(HttpStatus.CONFLICT, "ITEMS_UNAVAILABLE", missing.length === 1 ? "An item in your cart isn't available any more. Remove it and try again." : "Some items in your cart aren't available any more. Remove them and try again.", { items: missing });
     if (products.some((p) => p.sellerId === userId)) throw new AppException(HttpStatus.BAD_REQUEST, "OWN_LISTING", "You can't buy your own listing.");
 
-    return products.map((p) => {
-      const w = bySlug.get(p.slug)!;
+    // Keep the cart's order (the database returns products in any order), so the delivery fee always
+    // lands on the order of the first item's seller.
+    const bySlugProduct = new Map(products.map((p) => [p.slug, p]));
+    return [...bySlug.entries()].map(([slug, w]) => {
+      const p = bySlugProduct.get(slug)!;
       return { productId: p.id, slug: p.slug, name: p.name, option: w.option ?? "", imageUrl: p.imageUrl, price: Number(p.price), qty: w.qty, sellerId: p.sellerId };
     });
   }
